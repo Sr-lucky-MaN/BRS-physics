@@ -1,0 +1,43 @@
+appId: ru.sesc.brs-physics
+productName: БРС по физике
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+# config.json is placed next to the app (resources/) so it can be edited without rebuilding
+extraResources:
+  - from: config.json
+    to: config.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false                 # per-user install: no admin rights needed
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false   # keep bonus points / overrides on uninstall
+
+linux:
+  target: [AppImage, pacman, deb]
+  category: Education
+  maintainer: SESC physics department
+
+pacman:
+  compression: zstd
+  depends:
+    - c-ares
+    - gtk3
+    - libevent
+    - libnotify
+    - libseccomp
+    - libsecret
+    - libxss
+    - libxtst
+    - nss
+    - xdg-utils
+
+artifactName: brs-physics-${version}-${os}-${arch}.${ext}

@@ -1,0 +1,65 @@
+:root {
+  --bg: #f5f6f8; --panel: #fff; --line: #dfe3e8; --text: #1d2733; --muted: #6b7785; --accent: #2f6fed;
+  --warn: #ffe0b2; --err: #b00020;
+  font-family: system-ui, 'Segoe UI', Roboto, 'Noto Sans', sans-serif; font-size: 14px; color: var(--text);
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; background: var(--bg); }
+button, select, input { font: inherit; }
+button { padding: 5px 12px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
+button:hover:not(:disabled) { background: #eef2f8; }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { background: #2559c4; }
+select, input[type=text], input[type=number], input[type=password], input:not([type]) {
+  padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff;
+}
+.muted { color: var(--muted); } .pad { padding: 20px; } .grow { flex: 1; } .center { text-align: center; }
+.error { color: var(--err); }
+
+/* login */
+.login-wrap { height: 100%; display: grid; place-items: center; }
+.login-card { width: 340px; background: var(--panel); padding: 28px; border-radius: 12px; border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 14px; }
+.login-card h1 { margin: 0 0 4px; font-size: 20px; }
+.login-card label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.login-card input { color: var(--text); }
+
+/* layout */
+.app { height: 100%; display: flex; flex-direction: column; }
+.toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.banner { padding: 8px 14px; background: #fdecea; border-bottom: 1px solid #f5c2c0; cursor: pointer; }
+.content { flex: 1; display: grid; grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr); gap: 12px; padding: 12px; min-height: 0; }
+.status { padding: 6px 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); }
+.warn-text { color: #a15c00; }
+
+/* results table */
+.table-wrap { overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; }
+table.results th { position: sticky; top: 0; background: #eef1f5; z-index: 1; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+th { font-weight: 600; font-size: 12px; color: #425066; }
+td.name { text-align: left; font-weight: 500; }
+table.results tbody tr { cursor: pointer; }
+table.results tbody tr:hover { background: #f3f7ff; }
+table.results tbody tr.selected { background: #e1ecff; }
+td.mark { font-weight: 700; }
+.mark-5 { background: #c8e6c9; } .mark-4 { background: #dcedc8; } .mark-3 { background: #fff9c4; } .mark-2 { background: #ffcdd2; }
+td.warn { background: var(--warn); }
+
+/* detail */
+.detail { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-height: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-radius: 0; border-bottom: 2px solid transparent; background: none; padding: 10px 14px; }
+.tabs button.active { border-bottom-color: var(--accent); font-weight: 600; }
+.tab-body { padding: 14px; overflow: auto; flex: 1; }
+.summary h3 { margin-top: 0; } .summary p { margin: 8px 0; } .total { font-size: 15px; }
+.notes { color: #8a6d00; }
+table.lessons th, table.lessons td { text-align: left; white-space: normal; }
+table.lessons td.center { text-align: center; }
+table.lessons tr.unknown td { background: var(--warn); }
+table.lessons select { max-width: 200px; }
+.bonus .check { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.custom-row { display: flex; gap: 8px; margin-bottom: 6px; } .custom-row input[type=number] { width: 80px; } .custom-row input[type=text] { flex: 1; }
+.row { display: flex; gap: 8px; margin-top: 12px; }
