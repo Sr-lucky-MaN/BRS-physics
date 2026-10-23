@@ -9,7 +9,7 @@ export interface AppConfig extends AppSettings {
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
-  provider: 'mock',
+  provider: 'journal',
   providerOptions: {},
   // How a homework mark becomes "% done": 'percent' (mark IS the %), 'ten_point' (10 -> 100%), 'binary' (any mark = done)
   homeworkMode: 'percent',

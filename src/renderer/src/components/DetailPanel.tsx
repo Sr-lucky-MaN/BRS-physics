@@ -89,7 +89,7 @@ function LessonsTab({ student, lessons, entries, autoTypes, types, overrides, on
       <tbody>
         {sorted.map((l) => {
           const e = mine.get(l.id)
-          const cell = e ? [e.absent ? (e.excused ? 'Н (уваж.)' : 'Н') : null, e.value != null ? String(e.value) : null].filter(Boolean).join('; ') : ''
+          const cell = e ? [e.absent ? `Н${(e.absenceCount ?? 1) > 1 ? ` × ${e.absenceCount}` : ''}${e.excused ? ' (уваж.)' : ''}` : null, e.value != null ? String(e.value) : null].filter(Boolean).join('; ') : ''
           const auto = autoTypes[l.id]
           return (
             <tr key={l.id} className={types[l.id] == null ? 'unknown' : ''}>
@@ -101,7 +101,7 @@ function LessonsTab({ student, lessons, entries, autoTypes, types, overrides, on
                   {OVERRIDE_OPTIONS.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
                 </select>
               </td>
-              <td className="center">{cell}</td>
+              <td className={`center${e?.absent && e.excused ? ' excused' : ''}`}>{cell}</td>
             </tr>
           )
         })}

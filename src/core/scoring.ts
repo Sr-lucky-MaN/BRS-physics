@@ -147,7 +147,7 @@ export function computeStudent(
   } else r.notes.push('Нет домашних заданий за период — 0 баллов')
 
   // attendance (unexcused absences only)
-  for (const e of emap.values()) if (e.absent && !e.excused) r.unexcusedAbsences++
+  for (const e of emap.values()) if (e.absent && !e.excused) r.unexcusedAbsences += e.absenceCount ?? 1
   if (lessonsTotal) r.absencePct = (r.unexcusedAbsences / lessonsTotal) * 100
   r.attendancePen = attendancePenalty(r.absencePct)
 

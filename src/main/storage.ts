@@ -1,10 +1,11 @@
 /** Local JSON store for what the journal doesn't have: manual bonus points and per-lesson type overrides. */
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import type { BonusRow, StoreSnapshot, TaskType } from '@core/models'
+import type { BonusRow, LocalAuthState, StoreSnapshot, TaskType } from '@core/models'
 
 interface Data {
   overrides: Record<string, Record<string, TaskType>> // classId -> lessonId -> type
   bonus: Record<string, Record<string, BonusRow[]>> // `${classId}|${periodId}` -> studentId -> rows
+  auth?: LocalAuthState
 }
 
 export class Store {
@@ -24,6 +25,16 @@ export class Store {
     const tmp = this.file + '.tmp'
     writeFileSync(tmp, JSON.stringify(this.data, null, 2), 'utf-8')
     renameSync(tmp, this.file)
+  }
+
+  authState(fallback: LocalAuthState): LocalAuthState {
+    return this.data.auth ? JSON.parse(JSON.stringify(this.data.auth)) : JSON.parse(JSON.stringify(fallback))
+  }
+
+  setAuthState(state: LocalAuthState): LocalAuthState {
+    this.data.auth = JSON.parse(JSON.stringify(state))
+    this.save()
+    return this.authState(state)
   }
 
   snapshot(classId: string, periodId: string): StoreSnapshot {

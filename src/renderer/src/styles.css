@@ -24,6 +24,51 @@ select, input[type=text], input[type=number], input[type=password], input:not([t
 .login-card h1 { margin: 0 0 4px; font-size: 20px; }
 .login-card label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
 .login-card input { color: var(--text); }
+.login-wrap { position: relative; padding: 24px; }
+.login-card { width: min(380px, 100%); border-radius: 8px; box-shadow: 0 12px 36px #1d27331a; }
+.login-card select, .login-card input { width: 100%; min-height: 36px; }
+.login-options { display: flex; justify-content: space-between; gap: 12px; }
+.login-card .check-label { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+.check-label input { width: auto; min-height: 0; }
+.settings-trigger { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; font-size: 19px; }
+.settings-panel { position: absolute; z-index: 3; top: 64px; right: 18px; width: min(420px, calc(100% - 36px)); max-height: calc(100% - 84px); overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 36px #1d273326; }
+.settings-panel header, .settings-actions { display: flex; align-items: center; gap: 8px; }
+.settings-panel label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.settings-panel input:not([type=checkbox]), .settings-panel select { width: 100%; min-height: 34px; }
+.saved-profiles { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.saved-profile { display: flex; align-items: stretch; gap: 6px; }
+.saved-profile.selected { outline: 2px solid #2f6fed33; border-radius: 6px; }
+.saved-profile-name { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 9px; text-align: left; border-color: transparent; }
+.saved-profile-name .muted { font-size: 12px; overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
+.icon-button { width: 34px; padding: 0; font-size: 19px; }
+.icon-button.danger { color: var(--err); }
+.saved-accounts { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.saved-accounts-header { display: flex; align-items: center; gap: 8px; }
+.saved-accounts-header strong { flex: 1; }
+.import-accounts { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #f5f7fa; border: 1px solid var(--line); border-radius: 6px; }
+.import-accounts select { width: 100%; }
+.import-account-list { display: flex; flex-direction: column; gap: 6px; }
+.import-account-list .check-label { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 32px; padding: 4px 8px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; }
+.import-account-list .check-label input[type=checkbox] { width: 17px; height: 17px; min-height: 0; margin: 0; accent-color: var(--accent); }
+.import-account-list .primary { width: 100%; min-height: 34px; }
+.saved-account { display: flex; align-items: center; gap: 6px; padding: 4px 0 4px 8px; }
+.saved-account > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.saved-account .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-list { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.modal-backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 20px; background: #1d273366; }
+.modal { width: min(380px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 16px 48px #1d273344; }
+.modal header { display: flex; align-items: center; gap: 8px; }
+.modal header strong { flex: 1; }
+.modal header button { width: 32px; padding: 2px; font-size: 19px; }
+.modal label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.modal input { width: 100%; min-height: 36px; }
+.modal-error { margin-top: -4px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.login-loader { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #9aa5b1; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+.spinner-light { border-color: #ffffffb3; border-right-color: transparent; margin-right: 8px; }
+.primary .spinner { vertical-align: -3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* layout */
 .app { height: 100%; display: flex; flex-direction: column; }
@@ -59,6 +104,7 @@ td.warn { background: var(--warn); }
 table.lessons th, table.lessons td { text-align: left; white-space: normal; }
 table.lessons td.center { text-align: center; }
 table.lessons tr.unknown td { background: var(--warn); }
+table.lessons tr td.excused { background: #c8e6c9; }
 table.lessons select { max-width: 200px; }
 .bonus .check { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .custom-row { display: flex; gap: 8px; margin-bottom: 6px; } .custom-row input[type=number] { width: 80px; } .custom-row input[type=text] { flex: 1; }

@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { writeFileSync } from 'node:fs'
-import type { BonusRow, Period, TaskType } from '@core/models'
+import type { BonusRow, LocalAuthState, Period, Profile, TaskType } from '@core/models'
 import { API_METHODS, type BrsApi } from '@shared/api'
 import type { AppConfig } from './config'
 import type { JournalProvider } from './providers/types'
@@ -9,22 +9,30 @@ import type { Store } from './storage'
 /** Wire the BrsApi methods to ipcMain. Errors are returned as {ok:false,error} so the message survives IPC. */
 export function registerIpc(cfg: AppConfig, provider: JournalProvider, store: Store, getWindow: () => BrowserWindow | null) {
   const impl: BrsApi = {
-    async login(username, password) {
+    async login(username, password, profile: Profile) {
+      const configurable = provider as JournalProvider & { configure?: (options: Record<string, unknown>) => void }
+      configurable.configure?.({
+        baseUrl: profile.journalUrl,
+        allowSelfSignedCertificates: profile.allowSelfSignedCertificates === true,
+        journalTypeLabels: profile.journalTypeLabels ?? {}
+      })
       const res = await provider.login(username, password)
-      return { username, displayName: (res && res.displayName) || username }
+      return { ...(res ?? {}), username, displayName: username }
     },
     logout: () => provider.logout(),
     getSettings: async () => ({
       homeworkMode: cfg.homeworkMode, labsMinFraction: cfg.labsMinFraction, classifierRules: cfg.classifierRules
     }),
+    getAuthState: async () => store.authState({
+      profiles: [{ id: 'default', name: 'Основной', journalUrl: String(cfg.providerOptions.baseUrl ?? ''),
+        homeworkMode: cfg.homeworkMode, labsMinFraction: cfg.labsMinFraction, classifierRules: cfg.classifierRules }],
+      selectedProfileId: 'default', credentials: [], rememberMe: false, dontSignOut: false
+    }),
+    saveAuthState: async (state: LocalAuthState) => store.setAuthState(state),
     getClasses: () => provider.getClasses(),
-    getPeriods: (classId: string) => provider.getPeriods(classId),
-    async loadJournal(classId: string, period: Period) {
-      const [students, lessons, entries] = await Promise.all([
-        provider.getStudents(classId), provider.getLessons(classId, period), provider.getEntries(classId, period)
-      ])
-      return { students, lessons, entries }
-    },
+    getSubjects: (classId: string) => provider.getSubjects(classId),
+    getPeriods: (classId: string, subjectId: string) => provider.getPeriods(classId, subjectId),
+    loadJournal: (classId: string, subjectId: string, period: Period) => provider.loadJournal(classId, subjectId, period),
     async getStore(classId: string, periodId: string) {
       return store.snapshot(classId, periodId)
     },

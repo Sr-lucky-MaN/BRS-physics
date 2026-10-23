@@ -17,11 +17,17 @@ export interface ClassInfo {
   grade: number // 8..11
 }
 
+export interface SubjectInfo {
+  id: string
+  name: string
+}
+
 export interface Period {
   id: string
   name: string // e.g. "1 четверть"
   start: string
   end: string
+  finalColumn: string
 }
 
 export interface Student {
@@ -34,6 +40,7 @@ export interface Lesson {
   id: string
   date: string
   description: string
+  taskType?: TaskType
 }
 
 /**
@@ -49,17 +56,48 @@ export interface Entry {
   value?: number | null
   absent?: boolean
   excused?: boolean
+  absenceCount?: number
 }
 
 export interface UserSession {
   username: string
   displayName: string
+  token?: string
+  roles?: string[]
+  tutClss?: string[]
+  teachLoad?: Record<string, string[]>
+}
+
+export interface Profile {
+  id: string
+  name: string
+  journalUrl: string
+  allowSelfSignedCertificates?: boolean
+  homeworkMode: AppSettings['homeworkMode']
+  labsMinFraction: number
+  classifierRules: Partial<Record<TaskType, string[]>>
+  journalTypeLabels?: Partial<Record<Exclude<TaskType, 'ignored'>, string>>
+}
+
+export interface SavedCredential {
+  username: string
+  password: string
+  profileId: string
+}
+
+export interface LocalAuthState {
+  profiles: Profile[]
+  selectedProfileId: string
+  credentials: SavedCredential[]
+  rememberMe: boolean
+  dontSignOut: boolean
 }
 
 export interface JournalData {
   students: Student[]
   lessons: Lesson[]
   entries: Entry[]
+  periodMarks: Record<string, string>
 }
 
 export interface BonusRow {

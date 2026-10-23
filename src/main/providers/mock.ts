@@ -1,5 +1,5 @@
 /** Demo provider with generated data so the app runs before the real journal is wired in. Login: teacher / teacher */
-import type { ClassInfo, Entry, Lesson, Period, Student } from '@core/models'
+import type { ClassInfo, Entry, Lesson, Period, Student, SubjectInfo } from '@core/models'
 import { AuthError, type JournalProvider } from './types'
 
 const NAMES = ['Иванов Пётр', 'Петрова Анна', 'Сидоров Алексей', 'Кузнецова Мария', 'Смирнов Дмитрий', 'Попова Елена',
@@ -8,12 +8,12 @@ const NAMES = ['Иванов Пётр', 'Петрова Анна', 'Сидоро
 const CLASSES: ClassInfo[] = [{ id: '9a', name: '9А', grade: 9 }, { id: '11b', name: '11Б', grade: 11 }]
 const PERIODS: Record<string, Period[]> = {
   '9a': [
-    { id: 'q4-25', name: '4 четверть 2025/26', start: '2026-03-30', end: '2026-05-25' },
-    { id: 'q1-26', name: '1 четверть 2026/27', start: '2026-09-01', end: '2026-10-31' }
+    { id: 'q4-25', name: '4 четверть 2025/26', start: '2026-03-30', end: '2026-05-25', finalColumn: 'mock-q4' },
+    { id: 'q1-26', name: '1 четверть 2026/27', start: '2026-09-01', end: '2026-10-31', finalColumn: 'mock-q1' }
   ],
   '11b': [
-    { id: 's2-25', name: '2 семестр 2025/26', start: '2026-01-12', end: '2026-05-25' },
-    { id: 's1-26', name: '1 семестр 2026/27', start: '2026-09-01', end: '2026-12-31' }
+    { id: 's2-25', name: '2 семестр 2025/26', start: '2026-01-12', end: '2026-05-25', finalColumn: 'mock-s2' },
+    { id: 's1-26', name: '1 семестр 2026/27', start: '2026-09-01', end: '2026-12-31', finalColumn: 'mock-s1' }
   ]
 }
 
@@ -38,8 +38,9 @@ export class MockProvider implements JournalProvider {
   }
   async logout() {}
   async getClasses() { return CLASSES }
-  async getPeriods(classId: string) { return PERIODS[classId] ?? [] }
-  async getStudents(classId: string): Promise<Student[]> { return NAMES.map((n, i) => ({ id: `${classId}-${i}`, fullName: n })) }
+  async getSubjects(_classId: string): Promise<SubjectInfo[]> { return [{ id: 's610', name: 'Физика' }] }
+  async getPeriods(classId: string, _subjectId: string) { return PERIODS[classId] ?? [] }
+  private students(classId: string): Student[] { return NAMES.map((n, i) => ({ id: `${classId}-${i}`, fullName: n })) }
 
   private lessons(classId: string, period: Period): Lesson[] {
     const senior = classId === '11b'
@@ -62,13 +63,11 @@ export class MockProvider implements JournalProvider {
     return out
   }
 
-  async getLessons(classId: string, period: Period) { return this.lessons(classId, period) }
-
-  async getEntries(classId: string, period: Period): Promise<Entry[]> {
+  async loadJournal(classId: string, _subjectId: string, period: Period) {
     const rnd = rng(classId + period.id)
     const lessons = this.lessons(classId, period)
     const out: Entry[] = []
-    for (const s of await this.getStudents(classId)) {
+    for (const s of this.students(classId)) {
       const skill = 0.4 + rnd() * 0.6
       for (const l of lessons) {
         const desc = l.description.toLowerCase()
@@ -82,6 +81,6 @@ export class MockProvider implements JournalProvider {
         }
       }
     }
-    return out
+    return { students: this.students(classId), lessons, entries: out, periodMarks: {} }
   }
 }

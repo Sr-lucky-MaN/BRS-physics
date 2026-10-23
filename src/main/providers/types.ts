@@ -1,4 +1,4 @@
-import type { ClassInfo, Entry, Lesson, Period, Student } from '@core/models'
+import type { ClassInfo, Entry, Lesson, Period, Student, SubjectInfo } from '@core/models'
 
 /** Throw from login() with a user-readable message (shown on the login screen). */
 export class AuthError extends Error {}
@@ -10,25 +10,26 @@ export class AuthError extends Error {}
  */
 export interface JournalProvider {
   /** Authenticate. Resolve with an optional display name, or throw AuthError("Неверный пароль"). */
-  login(username: string, password: string): Promise<{ displayName?: string } | void>
+  login(username: string, password: string): Promise<{ displayName?: string; token?: string; roles?: string[]; tutClss?: string[]; teachLoad?: Record<string, string[]> } | void>
   logout(): Promise<void>
 
   /** Classes (grade 8..11) the logged-in teacher can see. */
   getClasses(): Promise<ClassInfo[]>
+  /** Subjects assigned to the teacher for the selected class. */
+  getSubjects(classId: string): Promise<SubjectInfo[]>
   /** Quarters for grades 8-9, semesters for 10-11 (dates as 'YYYY-MM-DD'). */
-  getPeriods(classId: string): Promise<Period[]>
-  getStudents(classId: string): Promise<Student[]>
+  getPeriods(classId: string, subjectId: string): Promise<Period[]>
   /**
    * EVERY physics lesson (journal column) in the period, including ones with no marks:
    * the count is the denominator of the absence percentage.
    * `description` is the text the teacher wrote for that date - it drives task-type detection.
    */
-  getLessons(classId: string, period: Period): Promise<Lesson[]>
-  /**
-   * One Entry per (student, lesson) that has a mark and/or an "Н".
-   * Set excused: true for green (уважительная) absences.
-   */
-  getEntries(classId: string, period: Period): Promise<Entry[]>
+  loadJournal(classId: string, subjectId: string, period: Period): Promise<{
+    students: Student[]
+    lessons: Lesson[]
+    entries: Entry[]
+    periodMarks: Record<string, string>
+  }>
 }
 
 export type ProviderFactory = (options: Record<string, unknown>) => JournalProvider

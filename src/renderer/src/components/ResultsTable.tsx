@@ -8,9 +8,10 @@ interface Props {
   columns: Column[]
   selectedId: string | null
   onSelect: (id: string) => void
+  periodMarks?: Record<string, string>
 }
 
-export default function ResultsTable({ students, results, columns, selectedId, onSelect }: Props) {
+export default function ResultsTable({ students, results, columns, selectedId, onSelect, periodMarks = {} }: Props) {
   return (
     <div className="table-wrap">
       <table className="results">
@@ -19,6 +20,7 @@ export default function ResultsTable({ students, results, columns, selectedId, o
             {columns.map((c) => (
               <th key={c.header}>{c.header}</th>
             ))}
+            <th>Оценка ЭЖ за период</th>
           </tr>
         </thead>
         <tbody>
@@ -34,6 +36,7 @@ export default function ResultsTable({ students, results, columns, selectedId, o
                     </td>
                   )
                 })}
+                <td className="mark">{periodMarks[s.id] ?? '—'}</td>
               </tr>
             )
           })}

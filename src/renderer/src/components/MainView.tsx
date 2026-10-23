@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  type AppSettings, type BonusRow, type ClassInfo, type JournalData, type Period, type StoreSnapshot, type TaskType,
-  type UserSession
+  type AppSettings, type BonusRow, type ClassInfo, type JournalData, type Period, type StoreSnapshot, type SubjectInfo,
+  type TaskType, type Profile, type UserSession
 } from '@core/models'
 import { Classifier } from '@core/classifier'
 import { computeClass } from '@core/scoring'
@@ -16,11 +16,13 @@ function pickPeriod(periods: Period[]): Period | undefined {
   return periods.find((p) => p.start <= today && today <= p.end) ?? periods[periods.length - 1]
 }
 
-export default function MainView({ session, onLogout }: { session: UserSession; onLogout: () => void }) {
+export default function MainView({ session, profile, onLogout }: { session: UserSession; profile: Profile | null; onLogout: () => void }) {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [classes, setClasses] = useState<ClassInfo[]>([])
   const [classId, setClassId] = useState('')
-  const [periodsState, setPeriodsState] = useState<{ classId: string; periods: Period[] }>({ classId: '', periods: [] })
+  const [subjectsState, setSubjectsState] = useState<{ classId: string; subjects: SubjectInfo[] }>({ classId: '', subjects: [] })
+  const [subjectId, setSubjectId] = useState('')
+  const [periodsState, setPeriodsState] = useState<{ classId: string; subjectId: string; periods: Period[] }>({ classId: '', subjectId: '', periods: [] })
   const [periodId, setPeriodId] = useState('')
   const [data, setData] = useState<JournalData | null>(null)
   const [store, setStore] = useState<StoreSnapshot>(EMPTY_STORE)
@@ -29,9 +31,11 @@ export default function MainView({ session, onLogout }: { session: UserSession; 
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const periodsReq = useRef(0) // each loader has its own counter to ignore out-of-order responses
+  const subjectsReq = useRef(0)
   const dataReq = useRef(0)
   // periods always belong to the class they were fetched for, so switching class never mixes them up
-  const periods = periodsState.classId === classId ? periodsState.periods : []
+  const periods = periodsState.classId === classId && periodsState.subjectId === subjectId ? periodsState.periods : []
+  const subjects = subjectsState.classId === classId ? subjectsState.subjects : []
 
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
 
@@ -44,21 +48,47 @@ export default function MainView({ session, onLogout }: { session: UserSession; 
       .finally(() => setLoading(''))
   }, [])
 
+  useEffect(() => {
+    if (profile) setSettings({ homeworkMode: profile.homeworkMode, labsMinFraction: profile.labsMinFraction, classifierRules: profile.classifierRules })
+  }, [profile])
+
+  useEffect(() => {
+    const my = ++subjectsReq.current
+    setSubjectId('')
+    if (!classId) {
+      setSubjectsState({ classId: '', subjects: [] })
+      return
+    }
+    setSubjectsState({ classId, subjects: [] })
+    window.api.getSubjects(classId)
+      .then((items) => {
+        if (my !== subjectsReq.current) return
+        setSubjectsState({ classId, subjects: items })
+        setSubjectId(items[0]?.id ?? '')
+      })
+      .catch((e) => { if (my === subjectsReq.current) fail(e) })
+  }, [classId])
+
   // 2. periods of the selected class
   useEffect(() => {
-    if (!classId) return
+    if (!classId || !subjectId) {
+      setPeriodsState({ classId, subjectId, periods: [] })
+      setPeriodId('')
+      setData(null)
+      return
+    }
     const my = ++periodsReq.current
     setLoading('Загрузка периодов…')
     setData(null)
-    window.api.getPeriods(classId)
+    window.api.getPeriods(classId, subjectId)
       .then((ps) => {
         if (my !== periodsReq.current) return
-        setPeriodsState({ classId, periods: ps })
+        setPeriodsState({ classId, subjectId, periods: ps })
         setPeriodId(pickPeriod(ps)?.id ?? '')
       })
       .catch(fail)
       .finally(() => { if (my === periodsReq.current) setLoading('') })
-  }, [classId])
+  }, [classId, subjectId])
 
   // 3. journal data + local store for class+period
   useEffect(() => {
@@ -67,11 +97,11 @@ export default function MainView({ session, onLogout }: { session: UserSession; 
     const my = ++dataReq.current
     setError('')
     setLoading('Загрузка данных журнала…')
-    Promise.all([window.api.loadJournal(classId, period), window.api.getStore(classId, periodId)])
+    Promise.all([window.api.loadJournal(classId, subjectId, period), window.api.getStore(classId, periodId)])
       .then(([d, s]) => { if (my !== dataReq.current) return; setData(d); setStore(s); setSelectedId(null) })
       .catch(fail)
       .finally(() => { if (my === dataReq.current) setLoading('') })
-  }, [classId, periodId, periods, reload])
+  }, [classId, subjectId, periodId, periods, reload])
 
   const classInfo = classes.find((c) => c.id === classId)
   const grade = classInfo?.grade ?? 9
@@ -83,7 +113,7 @@ export default function MainView({ session, onLogout }: { session: UserSession; 
     const autoTypes: Record<string, TaskType | null> = {}
     const types: Record<string, TaskType | null> = {}
     for (const l of data.lessons) {
-      autoTypes[l.id] = classifier.classify(l.description)
+      autoTypes[l.id] = l.taskType ?? classifier.classify(l.description)
       types[l.id] = store.overrides[l.id] ?? autoTypes[l.id]
     }
     const bonusTotals = Object.fromEntries(Object.entries(store.bonus).map(([sid, rows]) => [sid, rows.reduce((a, r) => a + r.points, 0)]))
@@ -121,6 +151,11 @@ export default function MainView({ session, onLogout }: { session: UserSession; 
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
+        <label>Предмет
+          <select value={subjectId} disabled={!subjects.length} onChange={(e) => setSubjectId(e.target.value)}>
+            {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
         <label>Период
           <select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
             {periods.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -138,7 +173,7 @@ export default function MainView({ session, onLogout }: { session: UserSession; 
       <main className="content">
         {computed ? (
           <>
-            <ResultsTable students={students} results={computed.results} columns={columns} selectedId={selectedId} onSelect={setSelectedId} />
+            <ResultsTable students={students} results={computed.results} columns={columns} selectedId={selectedId} onSelect={setSelectedId} periodMarks={data!.periodMarks} />
             <DetailPanel
               student={selected}
               result={selected ? computed.results[selected.id] : null}
