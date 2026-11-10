@@ -1,7 +1,7 @@
 {
   "name": "brs-physics",
   "productName": "БРС по физике",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "BRS rating calculator for the physics department",
   "main": "./out/main/index.js",
   "author": "SESC physics department",

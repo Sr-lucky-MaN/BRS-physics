@@ -29,6 +29,8 @@ export default function MainView({ session, profile, onLogout }: { session: User
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState('')
   const [error, setError] = useState('')
+  const [updateStatus, setUpdateStatus] = useState('')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [reload, setReload] = useState(0)
   const periodsReq = useRef(0) // each loader has its own counter to ignore out-of-order responses
   const subjectsReq = useRef(0)
@@ -135,6 +137,24 @@ export default function MainView({ session, profile, onLogout }: { session: User
     window.api.setBonus(classId, periodId, studentId, rows).then(setStore).catch(fail)
   }, [classId, periodId])
 
+  async function checkForUpdates() {
+    setCheckingUpdate(true)
+    setUpdateStatus('')
+    try {
+      const update = await window.api.checkUpdates()
+      if (update) {
+        setUpdateStatus(`Доступна версия ${update.version}`)
+        await window.api.openExternal(update.url)
+      } else {
+        setUpdateStatus('Установлена последняя версия')
+      }
+    } catch (e) {
+      setUpdateStatus(`Не удалось проверить обновления: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
   async function exportCsv() {
     if (!computed) return
     const rows = students.map((s) => columns.map((c) => c.get(s, computed.results[s.id])))
@@ -163,12 +183,14 @@ export default function MainView({ session, profile, onLogout }: { session: User
         </label>
         <button onClick={() => setReload((n) => n + 1)} disabled={!!loading}>Обновить из журнала</button>
         <button onClick={exportCsv} disabled={!computed}>Экспорт CSV</button>
+        <button onClick={checkForUpdates} disabled={checkingUpdate}>{checkingUpdate ? 'Проверка…' : 'Проверить обновления'}</button>
         <span className="grow" />
         <span className="muted">{session.displayName}</span>
         <button onClick={onLogout}>Выйти</button>
       </header>
 
       {error && <div className="banner error" onClick={() => setError('')}>{error} <span className="muted">(нажмите, чтобы скрыть)</span></div>}
+      {updateStatus && <div className="banner" role="status">{updateStatus}</div>}
 
       <main className="content">
         {computed ? (

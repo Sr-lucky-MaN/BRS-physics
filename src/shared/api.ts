@@ -18,9 +18,11 @@ export interface BrsApi {
   setBonus(classId: string, periodId: string, studentId: string, rows: BonusRow[]): Promise<StoreSnapshot>
   /** Opens a "save as" dialog and writes the text file. Returns the path or null if cancelled. */
   saveCsv(defaultName: string, content: string): Promise<string | null>
+  checkUpdates(): Promise<{ version: string; url: string } | null>
+  openExternal(url: string): Promise<void>
 }
 
 export const API_METHODS: (keyof BrsApi)[] = [
   'login', 'logout', 'getSettings', 'getAuthState', 'saveAuthState', 'getClasses', 'getSubjects', 'getPeriods', 'loadJournal', 'getStore', 'setOverride',
-  'setBonus', 'saveCsv'
+  'setBonus', 'saveCsv', 'checkUpdates', 'openExternal'
 ]

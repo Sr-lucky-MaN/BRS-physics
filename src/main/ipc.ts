@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { writeFileSync } from 'node:fs'
 import type { BonusRow, LocalAuthState, Period, Profile, TaskType } from '@core/models'
 import { API_METHODS, type BrsApi } from '@shared/api'
@@ -51,6 +51,28 @@ export function registerIpc(cfg: AppConfig, provider: JournalProvider, store: St
       if (canceled || !filePath) return null
       writeFileSync(filePath, '\uFEFF' + content, 'utf-8') // BOM so Excel reads UTF-8
       return filePath
+    },
+    async checkUpdates() {
+      const response = await fetch('https://api.github.com/repos/Sr-lucky-MaN/BRS-physics/releases/latest', {
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'BRS-Physics-Update-Checker' },
+        signal: AbortSignal.timeout(10000)
+      })
+      if (response.status === 404) return null
+      if (!response.ok) throw new Error(`GitHub API: ${response.status}`)
+      const release = await response.json() as { tag_name?: string; html_url?: string; draft?: boolean }
+      const version = (release.tag_name ?? '').replace(/^v/, '')
+      if (release.draft || !version || !release.html_url) return null
+      const current = app.getVersion()
+      const latestParts = version.split('.').map(Number)
+      const currentParts = current.split('.').map(Number)
+      const newer = latestParts.some((part, index) =>
+        part > (currentParts[index] ?? 0) && latestParts.slice(0, index).every((value, i) => value === (currentParts[i] ?? 0)))
+      return newer ? { version, url: release.html_url } : null
+    },
+    async openExternal(url: string) {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') throw new Error('Недопустимая ссылка релиза')
+      await shell.openExternal(parsed.href)
     }
   }
 
