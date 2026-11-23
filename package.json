@@ -12,8 +12,8 @@
     "start": "electron-vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dev:build": "./scripts/dev-build-arch.sh",
     "dev:build:no-install": "./scripts/dev-build-arch.sh --no-install",
     "dev:run": "./scripts/dev-run.sh"
