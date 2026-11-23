@@ -64,15 +64,14 @@ export function mark1011(total: number): number {
   return 2
 }
 
-export function homeworkToPercent(value: number, mode: AppSettings['homeworkMode']): number {
-  if (mode === 'ten_point') return Math.max(0, Math.min(100, value * 10))
-  if (mode === 'binary') return value > 0 ? 100 : 0
+/** Homework marks in the journal are percentages. */
+export function homeworkToPercent(value: number): number {
   return Math.max(0, Math.min(100, value))
 }
 
 // ------------------------------------------------------------------ result
-export type Settings = Pick<AppSettings, 'homeworkMode' | 'labsMinFraction'>
-export const DEFAULT_SETTINGS: Settings = { homeworkMode: 'percent', labsMinFraction: 0.8 }
+export type Settings = Pick<AppSettings, 'labsMinFraction'>
+export const DEFAULT_SETTINGS: Settings = { labsMinFraction: 0.8 }
 
 export interface StudentResult {
   studentId: string
@@ -136,7 +135,7 @@ export function computeStudent(
   const pcts: number[] = []
   for (const l of typed.homework ?? []) {
     const e = emap.get(l.id)
-    if (hasMark(e)) pcts.push(homeworkToPercent(e.value, settings.homeworkMode))
+    if (hasMark(e)) pcts.push(homeworkToPercent(e.value))
     else if (e?.absent) continue
     else pcts.push(0)
   }

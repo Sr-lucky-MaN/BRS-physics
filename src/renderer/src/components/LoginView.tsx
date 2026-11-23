@@ -12,7 +12,9 @@ const LABELS: Record<TaskType, string> = {
 }
 const EMPTY_PROFILE: Profile = {
   id: 'default', name: 'Основной', journalUrl: '',
-  homeworkMode: 'percent', labsMinFraction: 0.8, classifierRules: {}
+  allowSelfSignedCertificates: false,
+  bypassCaptcha: true,
+  labsMinFraction: 0.8, classifierRules: {}
 }
 const EMPTY_STATE: LocalAuthState = {
   profiles: [EMPTY_PROFILE], selectedProfileId: 'default', credentials: [], rememberMe: false, dontSignOut: false
@@ -287,7 +289,7 @@ export default function LoginView({ onLogin }: { onLogin: (s: UserSession) => vo
         <label>Название профиля<input value={settingsProfile.name} onChange={(e) => updateProfile({ name: e.target.value })} /></label>
         <label>URL журнала<input type="url" placeholder="https://journal.example" value={settingsProfile.journalUrl} onChange={(e) => updateProfile({ journalUrl: e.target.value })} /></label>
         <label className="check-label"><input type="checkbox" checked={settingsProfile.allowSelfSignedCertificates === true} onChange={(e) => updateProfile({ allowSelfSignedCertificates: e.target.checked })} /> Принимать самоподписанные сертификаты (небезопасно)</label>
-        <label>Режим домашних заданий<select value={settingsProfile.homeworkMode} onChange={(e) => updateProfile({ homeworkMode: e.target.value as Profile['homeworkMode'] })}><option value="percent">Оценка в процентах</option><option value="ten_point">10-балльная шкала</option><option value="binary">Выполнено / не выполнено</option></select></label>
+        <label className="check-label"><input type="checkbox" checked={settingsProfile.bypassCaptcha !== true} onChange={(e) => updateProfile({ bypassCaptcha: !e.target.checked })} /> Использовать капчу при входе</label>
         <label>Минимальная доля лабораторных<input type="number" min="0" max="1" step="0.05" value={settingsProfile.labsMinFraction} onChange={(e) => updateProfile({ labsMinFraction: Number(e.target.value) })} /></label>
         <div className="rule-list"><strong>Тексты видов оценки в ЭЖ</strong>{(Object.keys(EJ_LABELS) as (keyof typeof EJ_LABELS)[]).map((type) => <label key={type}>{LABELS[type]}<input value={settingsProfile.journalTypeLabels?.[type] ?? EJ_LABELS[type]} onChange={(e) => updateProfile({ journalTypeLabels: { ...settingsProfile.journalTypeLabels, [type]: e.target.value } })} /></label>)}</div>
       </aside>}

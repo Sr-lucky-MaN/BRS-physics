@@ -62,12 +62,11 @@ describe('scoring', () => {
     expect(r.a.hwPercent).toBe(100)
     expect(r.b.hwPercent).toBe(50)
   })
-  it('homework modes', () => {
+  it('homework mark is a percentage', () => {
     const lessons = make(['ДЗ 1'])
     const entries = [E('s', 'l0', 9)]
-    const run = (homeworkMode: 'percent' | 'ten_point' | 'binary') =>
-      computeClass([S('s')], lessons, entries, typesOf(lessons), 9, {}, { ...DEFAULT_SETTINGS, homeworkMode }).s.hwPercent
-    expect([run('percent'), run('ten_point'), run('binary')]).toEqual([9, 90, 100])
+    const r = computeClass([S('s')], lessons, entries, typesOf(lessons), 9, {}, DEFAULT_SETTINGS).s
+    expect(r.hwPercent).toBe(9)
   })
   it('absence penalty ignores excused', () => {
     const lessons = make(Array(10).fill('Тема'))

@@ -1,4 +1,4 @@
-import type { ClassInfo, Entry, Lesson, Period, Student, SubjectInfo } from '@core/models'
+import type { ClassInfo, Entry, JournalTopic, Lesson, Period, Student, SubjectInfo } from '@core/models'
 
 /** Throw from login() with a user-readable message (shown on the login screen). */
 export class AuthError extends Error {}
@@ -27,9 +27,18 @@ export interface JournalProvider {
   loadJournal(classId: string, subjectId: string, period: Period): Promise<{
     students: Student[]
     lessons: Lesson[]
+    topics: JournalTopic[]
     entries: Entry[]
     periodMarks: Record<string, string>
+    yearColumn: string
+    yearMarks: Record<string, string>
   }>
+  /** Create or update one dXXXX topic. "Не учитывать" is encoded as no type suffix. */
+  saveTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void>
+  /** Delete a topic by sending an empty theme to topicEdit. */
+  deleteTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void>
+  /** Write one grade cell: gradeAdd [day, class, subject, student, value, 'a']. */
+  setGrade(classId: string, subjectId: string, day: string, studentId: string, value: string): Promise<void>
 }
 
 export type ProviderFactory = (options: Record<string, unknown>) => JournalProvider

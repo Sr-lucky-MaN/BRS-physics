@@ -1,6 +1,7 @@
 /** Demo provider with generated data so the app runs before the real journal is wired in. Login: teacher / teacher */
-import type { ClassInfo, Entry, Lesson, Period, Student, SubjectInfo } from '@core/models'
+import type { ClassInfo, Entry, JournalTopic, Lesson, Period, Student, SubjectInfo, TaskType } from '@core/models'
 import { AuthError, type JournalProvider } from './types'
+import { currentAcademicStartYear, dateToJournalKey, parseGradeCell } from './journal-format'
 
 const NAMES = ['Иванов Пётр', 'Петрова Анна', 'Сидоров Алексей', 'Кузнецова Мария', 'Смирнов Дмитрий', 'Попова Елена',
   'Васильев Никита', 'Соколова Дарья', 'Михайлов Артём', 'Новикова Ольга', 'Фёдоров Кирилл', 'Морозова Алиса']
@@ -32,6 +33,12 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00
 const isWeekday = (iso: string) => { const d = new Date(iso + 'T00:00:00Z').getUTCDay(); return d >= 1 && d <= 5 }
 
 export class MockProvider implements JournalProvider {
+  private topicEdits = new Map<string, JournalTopic>()
+  private deletedTopics = new Set<string>()
+  private gradeEdits = new Map<string, string>()
+
+  private topicKey(classId: string, subjectId: string, day: string) { return `${classId}|${subjectId}|${day}` }
+
   async login(username: string, password: string) {
     if (username !== 'teacher' || password !== 'teacher') throw new AuthError('Неверный логин или пароль (демо: teacher / teacher)')
     return { displayName: 'Учитель физики' }
@@ -63,16 +70,45 @@ export class MockProvider implements JournalProvider {
     return out
   }
 
-  async loadJournal(classId: string, _subjectId: string, period: Period) {
+  private detectType(description: string): TaskType | null {
+    const desc = description.toLowerCase()
+    if (desc.includes('устн')) return 'exam_oral'
+    if (desc.includes('итоговая')) return 'exam_written'
+    if (desc.includes('лаборат')) return 'lab'
+    if (desc.includes('домашн')) return 'homework'
+    if (['самост', 'контрол', 'коллок'].some((k) => desc.includes(k))) return 'current_work'
+    return null
+  }
+
+  async loadJournal(classId: string, subjectId: string, period: Period) {
     const rnd = rng(classId + period.id)
-    const lessons = this.lessons(classId, period)
+    const sourceLessons = this.lessons(classId, period)
+    const topics: JournalTopic[] = []
+    const dayByLessonId = new Map<string, string>()
+    for (const l of sourceLessons) {
+      const day = dateToJournalKey(l.date, currentAcademicStartYear(new Date(`${l.date}T00:00:00Z`))) ?? 'd000'
+      dayByLessonId.set(l.id, day)
+      const key = this.topicKey(classId, subjectId, day)
+      if (this.deletedTopics.has(key)) continue
+      topics.push({
+        id: day, date: l.date, theme: l.description, taskType: this.detectType(l.description),
+        homework: '', weight: 0, hours: 1, ...(this.topicEdits.get(key) ?? {})
+      })
+    }
+    const lessons: Lesson[] = sourceLessons.flatMap((l) => {
+      const day = dayByLessonId.get(l.id)!
+      const topic = topics.find((t) => t.id === day)
+      if (!topic) return []
+      return [{ id: day, date: l.date, description: topic.theme || l.description, taskType: topic.taskType ?? l.taskType }]
+    }).sort((a, b) => a.date.localeCompare(b.date))
+
     const out: Entry[] = []
     for (const s of this.students(classId)) {
       const skill = 0.4 + rnd() * 0.6
       for (const l of lessons) {
         const desc = l.description.toLowerCase()
-        if (rnd() < (1 - skill) * 0.35) { out.push({ studentId: s.id, lessonId: l.id, absent: true, excused: rnd() < 0.5 }); continue }
-        const mk = (value: number) => out.push({ studentId: s.id, lessonId: l.id, value })
+        if (rnd() < (1 - skill) * 0.35) { out.push({ studentId: s.id, lessonId: l.id, absent: true, excused: rnd() < 0.5, raw: 'н' }); continue }
+        const mk = (value: number) => out.push({ studentId: s.id, lessonId: l.id, value, raw: String(value) })
         if (desc.includes('итоговая')) mk(Math.round(25 * skill * (0.7 + rnd() * 0.3)))
         else if (desc.includes('устный')) mk(Math.round(15 * skill * (0.7 + rnd() * 0.3)))
         else if (desc.includes('домашн')) { if (rnd() < skill + 0.1) mk(Math.min(100, Math.round(100 * skill * (0.8 + rnd() * 0.25)))) }
@@ -81,6 +117,39 @@ export class MockProvider implements JournalProvider {
         }
       }
     }
-    return { students: this.students(classId), lessons, entries: out, periodMarks: {} }
+    for (const [key, raw] of this.gradeEdits) {
+      const [c, s, day, studentId] = key.split('|')
+      if (c !== classId || s !== subjectId) continue
+      const parsed = parseGradeCell(raw)
+      const entry: Entry = {
+        studentId, lessonId: day, value: parsed.value, absent: parsed.absenceCount > 0,
+        excused: false, absenceCount: parsed.absenceCount, raw
+      }
+      const index = out.findIndex((e) => e.studentId === studentId && e.lessonId === day)
+      if (index >= 0) out[index] = entry
+      else out.push(entry)
+    }
+    const yearColumn = 'd925g'
+    const yearMarks: Record<string, string> = {}
+    for (const [key, raw] of this.gradeEdits) {
+      const [c, s, day, studentId] = key.split('|')
+      if (c === classId && s === subjectId && day === yearColumn) yearMarks[studentId] = raw
+    }
+    return { students: this.students(classId), lessons, topics, entries: out, periodMarks: {}, yearColumn, yearMarks }
+  }
+
+  async saveTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void> {
+    this.topicEdits.set(this.topicKey(classId, subjectId, topic.id), { ...topic })
+    this.deletedTopics.delete(this.topicKey(classId, subjectId, topic.id))
+  }
+
+  async deleteTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void> {
+    const key = this.topicKey(classId, subjectId, topic.id)
+    this.deletedTopics.add(key)
+    this.topicEdits.delete(key)
+  }
+
+  async setGrade(classId: string, subjectId: string, day: string, studentId: string, value: string): Promise<void> {
+    this.gradeEdits.set(`${classId}|${subjectId}|${day}|${studentId}`, value)
   }
 }

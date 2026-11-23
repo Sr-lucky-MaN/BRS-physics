@@ -1,7 +1,6 @@
 {
   "provider": "journal",
   "providerOptions": {},
-  "homeworkMode": "percent",
   "labsMinFraction": 0.8,
   "classifierRules": {}
 }

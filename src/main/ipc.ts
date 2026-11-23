@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { writeFileSync } from 'node:fs'
-import type { BonusRow, LocalAuthState, Period, Profile, TaskType } from '@core/models'
+import type { BonusRow, JournalTopic, LocalAuthState, Period, Profile, TaskType } from '@core/models'
 import { API_METHODS, type BrsApi } from '@shared/api'
 import type { AppConfig } from './config'
 import type { JournalProvider } from './providers/types'
@@ -14,6 +14,7 @@ export function registerIpc(cfg: AppConfig, provider: JournalProvider, store: St
       configurable.configure?.({
         baseUrl: profile.journalUrl,
         allowSelfSignedCertificates: profile.allowSelfSignedCertificates === true,
+        bypassCaptcha: profile.bypassCaptcha === true,
         journalTypeLabels: profile.journalTypeLabels ?? {}
       })
       const res = await provider.login(username, password)
@@ -21,11 +22,11 @@ export function registerIpc(cfg: AppConfig, provider: JournalProvider, store: St
     },
     logout: () => provider.logout(),
     getSettings: async () => ({
-      homeworkMode: cfg.homeworkMode, labsMinFraction: cfg.labsMinFraction, classifierRules: cfg.classifierRules
+      labsMinFraction: cfg.labsMinFraction, classifierRules: cfg.classifierRules
     }),
     getAuthState: async () => store.authState({
       profiles: [{ id: 'default', name: 'Основной', journalUrl: String(cfg.providerOptions.baseUrl ?? ''),
-        homeworkMode: cfg.homeworkMode, labsMinFraction: cfg.labsMinFraction, classifierRules: cfg.classifierRules }],
+        labsMinFraction: cfg.labsMinFraction, classifierRules: cfg.classifierRules }],
       selectedProfileId: 'default', credentials: [], rememberMe: false, dontSignOut: false
     }),
     saveAuthState: async (state: LocalAuthState) => store.setAuthState(state),
@@ -33,6 +34,9 @@ export function registerIpc(cfg: AppConfig, provider: JournalProvider, store: St
     getSubjects: (classId: string) => provider.getSubjects(classId),
     getPeriods: (classId: string, subjectId: string) => provider.getPeriods(classId, subjectId),
     loadJournal: (classId: string, subjectId: string, period: Period) => provider.loadJournal(classId, subjectId, period),
+    saveTopic: (classId: string, subjectId: string, topic: JournalTopic) => provider.saveTopic(classId, subjectId, topic),
+    deleteTopic: (classId: string, subjectId: string, topic: JournalTopic) => provider.deleteTopic(classId, subjectId, topic),
+    setGrade: (classId: string, subjectId: string, day: string, studentId: string, value: string) => provider.setGrade(classId, subjectId, day, studentId, value),
     async getStore(classId: string, periodId: string) {
       return store.snapshot(classId, periodId)
     },

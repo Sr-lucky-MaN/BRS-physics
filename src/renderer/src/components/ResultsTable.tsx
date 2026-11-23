@@ -9,9 +9,10 @@ interface Props {
   selectedId: string | null
   onSelect: (id: string) => void
   periodMarks?: Record<string, string>
+  onSetPeriodMark?: (studentId: string) => void
 }
 
-export default function ResultsTable({ students, results, columns, selectedId, onSelect, periodMarks = {} }: Props) {
+export default function ResultsTable({ students, results, columns, selectedId, onSelect, periodMarks = {}, onSetPeriodMark }: Props) {
   return (
     <div className="table-wrap">
       <table className="results">
@@ -36,7 +37,20 @@ export default function ResultsTable({ students, results, columns, selectedId, o
                     </td>
                   )
                 })}
-                <td className="mark">{periodMarks[s.id] ?? '—'}</td>
+                <td className="mark">
+                  <div className="period-mark-cell">
+                    <span>{periodMarks[s.id] ?? '—'}</span>
+                    {onSetPeriodMark && (
+                      <button
+                        type="button"
+                        className="icon-button tiny"
+                        title={r.mark == null ? 'Нет расчётной отметки' : `Выставить ${r.mark}`}
+                        disabled={r.mark == null}
+                        onClick={(e) => { e.stopPropagation(); onSetPeriodMark(s.id) }}
+                      >✓</button>
+                    )}
+                  </div>
+                </td>
               </tr>
             )
           })}

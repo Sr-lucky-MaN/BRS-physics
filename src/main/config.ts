@@ -11,8 +11,6 @@ export interface AppConfig extends AppSettings {
 export const DEFAULT_CONFIG: AppConfig = {
   provider: 'journal',
   providerOptions: {},
-  // How a homework mark becomes "% done": 'percent' (mark IS the %), 'ten_point' (10 -> 100%), 'binary' (any mark = done)
-  homeworkMode: 'percent',
   // Lab rule "4/5 done": minimum share of held labs a student must have done
   labsMinFraction: 0.8,
   // Replace the default regexes for a task type, e.g. { "homework": ["домашн", "на дом"] }

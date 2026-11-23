@@ -11,6 +11,15 @@ export const TYPE_LABELS: Record<TaskType, string> = {
   ignored: 'Не учитывать'
 }
 
+/** Labels the electronic journal expects after `|` in a topic description. */
+export const JOURNAL_TYPE_LABELS: Record<Exclude<TaskType, 'ignored'>, string> = {
+  current_work: 'Текущая работа',
+  lab: 'Лабораторная работа',
+  homework: 'Процент выполнения ДЗ',
+  exam_oral: 'Экзамен устный',
+  exam_written: 'Экзамен письменный'
+}
+
 export interface ClassInfo {
   id: string
   name: string // e.g. "9А"
@@ -57,6 +66,18 @@ export interface Entry {
   absent?: boolean
   excused?: boolean
   absenceCount?: number
+  raw?: string // exact cell text from the journal ('5', 'н', '5 н н', ...)
+}
+
+/** One topic record from topicsGet (a dXXXX column). */
+export interface JournalTopic {
+  id: string // dXXXX
+  date: string
+  theme: string // without the '| type' suffix
+  taskType: TaskType | null
+  homework: string
+  weight: number // 0..9 raw code; 9 means "П"
+  hours: number
 }
 
 export interface UserSession {
@@ -73,7 +94,7 @@ export interface Profile {
   name: string
   journalUrl: string
   allowSelfSignedCertificates?: boolean
-  homeworkMode: AppSettings['homeworkMode']
+  bypassCaptcha?: boolean
   labsMinFraction: number
   classifierRules: Partial<Record<TaskType, string[]>>
   journalTypeLabels?: Partial<Record<Exclude<TaskType, 'ignored'>, string>>
@@ -96,8 +117,12 @@ export interface LocalAuthState {
 export interface JournalData {
   students: Student[]
   lessons: Lesson[]
+  topics: JournalTopic[]
   entries: Entry[]
   periodMarks: Record<string, string>
+  /** Column that stores the final mark for the academic year (e.g. d925g). */
+  yearColumn: string
+  yearMarks: Record<string, string>
 }
 
 export interface BonusRow {
@@ -113,7 +138,6 @@ export interface StoreSnapshot {
 }
 
 export interface AppSettings {
-  homeworkMode: 'percent' | 'ten_point' | 'binary'
   labsMinFraction: number
   classifierRules: Partial<Record<TaskType, string[]>>
 }

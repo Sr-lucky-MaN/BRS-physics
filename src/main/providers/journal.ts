@@ -3,11 +3,11 @@
  * Fill in the TODOs, then set  "provider": "journal"  in config.json.
  * (`options` = "providerOptions" from config.json, e.g. { "baseUrl": "https://journal.example" })
  */
-import type { ClassInfo, Entry, Lesson, Period, Student, SubjectInfo, TaskType } from '@core/models'
+import type { ClassInfo, Entry, JournalTopic, Lesson, Period, Student, SubjectInfo, TaskType } from '@core/models'
 import { Agent, fetch as undiciFetch } from 'undici'
 import { AuthError, type JournalProvider } from './types'
 import solveCaptcha from './captcha_solver';
-import { currentAcademicStartYear, journalDate, parseGradeCell, parseScoleConfig, periodsFromColumns, typeFromTopic, type ScoleConfig } from './journal-format'
+import { buildTopicText, currentAcademicStartYear, journalDate, parseGradeCell, parseJournalResponse, parseScoleConfig, parseTopicRecord, periodsFromColumns, typeFromTopic, yearColumnFromColumns, type ScoleConfig } from './journal-format'
 
 const DEFAULT_SUBJECTS: Record<string, string> = {
   s110: 'Русский язык', s120: 'Литература', s210: 'Английский язык', s220: 'Немецкий язык',
@@ -54,21 +54,10 @@ export class JournalApiProvider implements JournalProvider {
       })
     }, `${functionName} request`)
     const raw = await response.text().catch(() => '')
-    if (!response.ok) throw new AuthError(`Ошибка ${functionName}: HTTP ${response.status}`)
-    if (raw.trim() === 'none') {
-      if (allowNone) return {}
-      throw new AuthError(`Журнал не вернул данные для ${functionName}`)
-    }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-      if (typeof parsed === 'string' && parsed !== 'none') parsed = JSON.parse(parsed)
-    } catch { throw new AuthError(`Журнал вернул некорректный ответ для ${functionName}`) }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      if (allowNone) return {}
-      throw new AuthError(`Журнал вернул некорректный ответ для ${functionName}`)
-    }
-    return parsed as Record<string, unknown>
+    if (!response.ok) throw new AuthError(`Ошибка ${functionName}: HTTP ${response.status}${raw.trim() ? `: ${raw.trim().slice(0, 300)}` : ''}`)
+    if (allowNone && !raw.trim()) return {}
+
+    return parseJournalResponse(raw, functionName, allowNone)
   }
 
   private async fetchJournal(url: URL, init: RequestInit, operation: string): Promise<Response> {
@@ -131,14 +120,26 @@ export class JournalApiProvider implements JournalProvider {
   async login(username: string, password: string) {
     const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
     if (!baseUrl) throw new AuthError('Укажите URL журнала в настройках профиля')
-    const { ci, c } = await this.getCaptchaValues()
+    
+    // bypassCaptcha = true means skip captcha (checkbox "Use captcha" is unchecked)
+    // bypassCaptcha = false means use captcha (checkbox "Use captcha" is checked)
+    const useCaptcha = this.options.bypassCaptcha !== true
+    
+    let ci = ''
+    let c = ''
+    if (useCaptcha) {
+      const captchaValues = await this.getCaptchaValues()
+      ci = captchaValues.ci
+      c = captchaValues.c
+    }
+    
     const body = JSON.stringify({
       t: String(this.options.loginType ?? 'staff'),
       l: username,
       p: password,
       f: 'login',
-      ci,
-      c
+      ...(ci ? { ci } : {}),
+      ...(c ? { c } : {})
     })
     const loginUrl = new URL('/', baseUrl)
     const response = await this.fetchJournal(loginUrl, {
@@ -248,6 +249,7 @@ export class JournalApiProvider implements JournalProvider {
   }
 
   async loadJournal(classId: string, subjectId: string, period: Period) {
+    const config = await this.getScoleConfig()
     const [grades, topics, respect] = await Promise.all([
       this.apiRequest('gradesGet', [classId, subjectId, this.username]),
       this.apiRequest('topicsGet', [classId, subjectId, this.username], true),
@@ -264,16 +266,20 @@ export class JournalApiProvider implements JournalProvider {
     for (const key of [...Object.keys(grades), ...Object.keys(topics)]) {
       if (/^d\d\d\d$/.test(key)) dateKeys.add(key)
     }
-    const topicValues = topics as Record<string, { t?: unknown; v?: unknown }>
+    const topicValues = topics as Record<string, Record<string, unknown>>
+    const journalTopics: JournalTopic[] = []
     const lessons: Lesson[] = [...dateKeys].flatMap((key) => {
       const date = journalDate(key, academicYear)
       if (!date || date < period.start || date > period.end) return []
-      const topic = topicValues[key]
-      const rawTopic = typeof topic?.t === 'string' ? topic.t.trim() : ''
-      const hours = typeof topic?.v === 'number' && topic.v > 0 ? topic.v : 1
+      const topic = topicValues[key] ?? {}
+      const record = parseTopicRecord(key, date, topic, this.journalTypeLabels)
+      journalTopics.push(record)
+      const rawTopic = typeof topic.t === 'string' ? topic.t.trim() : ''
+      const hours = record.hours
       const description = rawTopic ? `${rawTopic}${hours > 1 ? ` (${hours} ч)` : ''}` : ''
       return [{ id: key, date, description, taskType: typeFromTopic(rawTopic, this.journalTypeLabels) }]
     }).sort((a, b) => a.date.localeCompare(b.date))
+    journalTopics.sort((a, b) => a.date.localeCompare(b.date))
 
     const periodsByStudent = respect as Record<string, unknown>
     const excusedByDate = new Map<string, boolean>()
@@ -299,16 +305,41 @@ export class JournalApiProvider implements JournalProvider {
           studentId: student.id, lessonId: lesson.id, value: parsed.value,
           absent: parsed.absenceCount > 0,
           excused: parsed.absenceCount > 0 && excusedByDate.has(`${student.id}|${lesson.id}`),
-          absenceCount: parsed.absenceCount
+          absenceCount: parsed.absenceCount,
+          raw: parsed.raw
         })
       })
     }
 
-    const finalValues = Array.isArray(gradeColumns[period.finalColumn]) ? gradeColumns[period.finalColumn] as unknown[] : []
-    const periodMarks = Object.fromEntries(students.flatMap((student, index) => {
-      const mark = typeof finalValues[index] === 'string' || typeof finalValues[index] === 'number' ? String(finalValues[index]).trim() : ''
-      return mark ? [[student.id, mark]] : []
-    }))
-    return { students, lessons, entries, periodMarks }
+    const marksFrom = (column: string): Record<string, string> => {
+      const values = Array.isArray(gradeColumns[column]) ? gradeColumns[column] as unknown[] : []
+      return Object.fromEntries(students.flatMap((student, index) => {
+        const mark = typeof values[index] === 'string' || typeof values[index] === 'number' ? String(values[index]).trim() : ''
+        return mark ? [[student.id, mark]] : []
+      }))
+    }
+    const periodMarks = marksFrom(period.finalColumn)
+    const yearColumn = yearColumnFromColumns(Object.keys(grades), academicYear, config?.periods)
+    const yearMarks = yearColumn ? marksFrom(yearColumn) : {}
+    return { students, lessons, topics: journalTopics, entries, periodMarks, yearColumn, yearMarks }
+  }
+
+  async saveTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void> {
+    await this.apiRequest('topicEdit', [
+      classId, subjectId, topic.id,
+      buildTopicText(topic.theme, topic.taskType, this.journalTypeLabels),
+      topic.homework, String(topic.weight), String(topic.hours)
+    ], true)
+  }
+
+  async deleteTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void> {
+    await this.apiRequest('topicEdit', [
+      classId, subjectId, topic.id, '',
+      topic.homework, String(topic.weight), String(topic.hours)
+    ], true)
+  }
+
+  async setGrade(classId: string, subjectId: string, day: string, studentId: string, value: string): Promise<void> {
+    await this.apiRequest('gradeAdd', [day, classId, subjectId, studentId, value, 'a'], true)
   }
 }

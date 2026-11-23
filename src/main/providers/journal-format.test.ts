@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { journalDate, parseGradeCell, parseScoleConfig, periodsFromColumns, typeFromTopic } from './journal-format'
+import {
+  buildTopicText, dateToJournalKey, formatJournalWeight, journalDate, parseGradeCell, parseJournalResponse,
+  parseScoleConfig, parseTopicRecord, periodsFromColumns, splitTopicText, typeFromTopic
+} from './journal-format'
 
 describe('journal date and periods', () => {
   it('decodes the school-year month index including year rollover', () => {
@@ -48,12 +51,50 @@ describe('journal date and periods', () => {
 
 describe('grade cells and topic type suffix', () => {
   it('counts each Н even when the mark is in the same cell', () => {
-    expect(parseGradeCell('5 н н')).toEqual({ value: 5, absenceCount: 2 })
-    expect(parseGradeCell('нн')).toEqual({ value: null, absenceCount: 2 })
+    expect(parseGradeCell('5 н н')).toEqual({ value: 5, absenceCount: 2, raw: '5 н н' })
+    expect(parseGradeCell('нн')).toEqual({ value: null, absenceCount: 2, raw: 'нн' })
   })
 
   it('maps the configured journal suffix to a task type', () => {
     expect(typeFromTopic('Оптика | Экзамен устный', {})).toBe('exam_oral')
     expect(typeFromTopic('Оптика | Моя лабораторная', { lab: 'Моя лабораторная' })).toBe('lab')
+  })
+
+  it('converts an ISO date back to a dXXXX journal key', () => {
+    expect(dateToJournalKey('2026-09-16', 2026)).toBe('d016')
+    expect(dateToJournalKey('2027-01-25', 2026)).toBe('d425')
+    expect(dateToJournalKey('2026-01-25', 2026)).toBeNull()
+    expect(dateToJournalKey('2026-02-30', 2026)).toBeNull()
+  })
+
+  it('formats weight codes including the special П value', () => {
+    expect([0, 1, 2, 3, 8, 9].map(formatJournalWeight)).toEqual(['0', '0.5', '1', '1.5', '4', 'П'])
+  })
+
+  it('splits and rebuilds topic text without losing the theme', () => {
+    const labels = { lab: 'Моя лабораторная' }
+    expect(splitTopicText('Оптика | Моя лабораторная', labels)).toEqual({ theme: 'Оптика', taskType: 'lab' })
+    expect(splitTopicText('Оптика', labels)).toEqual({ theme: 'Оптика', taskType: null })
+    expect(buildTopicText('Оптика', 'lab', labels)).toBe('Оптика | Моя лабораторная')
+    expect(buildTopicText('Оптика', 'ignored', labels)).toBe('Оптика')
+  })
+
+  it('accepts plain-text success answers from write requests', () => {
+    expect(parseJournalResponse('success', 'gradeAdd', true)).toEqual({})
+    expect(parseJournalResponse('"success"', 'topicEdit', true)).toEqual({})
+    expect(parseJournalResponse('', 'topicEdit', true)).toEqual({})
+    expect(parseJournalResponse('{"d001":{"t":"Оптика","w":3}}', 'topicsGet', true)).toEqual({ d001: { t: 'Оптика', w: 3 } })
+    expect(() => parseJournalResponse('success', 'gradesGet')).toThrow('некорректный ответ')
+    expect(() => parseJournalResponse('error: access denied', 'gradeAdd', true)).toThrow('access denied')
+  })
+
+  it('reads topic fields from a topicsGet column', () => {
+    expect(parseTopicRecord('d016', '2026-09-16', {
+      t: 'Оптика | Текущая работа', h: 'задачи 5', w: 3, v: 2
+    }, {})).toEqual({
+      id: 'd016', date: '2026-09-16', theme: 'Оптика', taskType: 'current_work',
+      homework: 'задачи 5', weight: 3, hours: 2
+    })
+    expect(parseTopicRecord('d017', '2026-09-17', { w: 9 }, {}).weight).toBe(9)
   })
 })

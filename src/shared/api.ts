@@ -1,5 +1,5 @@
 import type {
-  AppSettings, BonusRow, ClassInfo, JournalData, LocalAuthState, Period, Profile, StoreSnapshot, SubjectInfo, TaskType, UserSession
+  AppSettings, BonusRow, ClassInfo, JournalData, JournalTopic, LocalAuthState, Period, Profile, StoreSnapshot, SubjectInfo, TaskType, UserSession
 } from '@core/models'
 
 /** The API the renderer sees as `window.api` (implemented via IPC in src/main/ipc.ts). */
@@ -13,6 +13,9 @@ export interface BrsApi {
   getSubjects(classId: string): Promise<SubjectInfo[]>
   getPeriods(classId: string, subjectId: string): Promise<Period[]>
   loadJournal(classId: string, subjectId: string, period: Period): Promise<JournalData>
+  saveTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void>
+  deleteTopic(classId: string, subjectId: string, topic: JournalTopic): Promise<void>
+  setGrade(classId: string, subjectId: string, day: string, studentId: string, value: string): Promise<void>
   getStore(classId: string, periodId: string): Promise<StoreSnapshot>
   setOverride(classId: string, periodId: string, lessonId: string, type: TaskType | null): Promise<StoreSnapshot>
   setBonus(classId: string, periodId: string, studentId: string, rows: BonusRow[]): Promise<StoreSnapshot>
@@ -23,6 +26,6 @@ export interface BrsApi {
 }
 
 export const API_METHODS: (keyof BrsApi)[] = [
-  'login', 'logout', 'getSettings', 'getAuthState', 'saveAuthState', 'getClasses', 'getSubjects', 'getPeriods', 'loadJournal', 'getStore', 'setOverride',
-  'setBonus', 'saveCsv', 'checkUpdates', 'openExternal'
+  'login', 'logout', 'getSettings', 'getAuthState', 'saveAuthState', 'getClasses', 'getSubjects', 'getPeriods', 'loadJournal', 'saveTopic', 'deleteTopic',
+  'setGrade', 'getStore', 'setOverride', 'setBonus', 'saveCsv', 'checkUpdates', 'openExternal'
 ]

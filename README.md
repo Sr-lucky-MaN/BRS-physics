@@ -1,90 +1,150 @@
-# БРС по физике — Electron + React
+# БРС по физике
 
-Desktop app (Windows / Linux) that shows student marks and calculates BRS final marks per quarter
-(grades 8-9) and semester (grades 10-11) according to the physics department spec.
+Настольное приложение для Windows и Linux (Electron + React + TypeScript, версия **1.1.0**).
+Показывает отметки из электронного журнала и рассчитывает итоговую оценку БРС за четверть
+(8–9 классы) или семестр (10–11 классы), а также позволяет редактировать записи и оценки
+непосредственно в журнале.
 
-Stack: Electron · React 19 · TypeScript · Vite (electron-vite) · electron-builder · Vitest.
+Метаданные приложения (название, автор, версия, описание, сайт) находятся в **`package.json`**:
+`productName` — «БРС по физике», `author` — SESC physics department, `homepage` — https://lyceum.urfu.ru.
+Параметры сборки и установки (appId, maintainer, имена артефактов) — в `electron-builder.yml`.
+
+## Возможности
+
+**Вкладка «Сводка»**
+- таблица результатов по классу и период: баллы по видам работ, итог, статус, текущая оценка в ЭЖ;
+- панель ученика: расшифровка расчёта, ручная замена типа занятия, bonus-баллы;
+- экспорт в CSV, обновление данных из журнала;
+- кнопка «Оценки за год»: таблица баллов и отметок за каждый период, автозаполнение годовой оценки средним арифметическим (с округлением) и ручной ввод, сохранение через колонку года в журнале;
+- автоматическое выставление итоговой отметки периода:
+  - кнопка «✓» в строке ученика — одному ученику;
+  - общая кнопка «Выставить отметки за период» — для всех с предпросмотром и выбором
+    «только пустые ячейки / перезаписать все»;
+  - ученики без расчётной отметки (например, «Пересдача» в 10–11 классе) пропускаются;
+  - ошибки по отдельным ученикам не прерывают остальных, в конце показывается итог.
+
+**Вкладка «Записи ЭЖ»**
+- записи из `topicsGet`: дата, тема (без суффикса вида оценки), домашнее задание, вес, часы, тип;
+- вес хранится кодом `0…9` и отображается как `0, 0.5, 1, …, 4, П` (`9` = «П»);
+- сортировка по любой колонке, добавление записи с выбором даты, изменение и удаление;
+- тип «Не учитывать» отправляется в журнал без суффикса `| …`;
+- при смене даты старый `dXXXX` удаляется, создаётся новый.
+
+**Вкладка «Журнал»**
+- сетка «ученики × даты» (`дд.мм`) с данными из `gradesGet` и `topicsGet`;
+- двойной клик или Enter по клетке — редактирование оценки произвольным текстом (`5`, `н`, `12` …), Enter сохраняет, Esc отменяет;
+- справа — только для чтения: сводка по выбранной записи (ученик, дата, тема, тип, ДЗ, вес, часы, оценка, пропуск).
+
+**Профили и вход**
+- несколько профилей подключения со своими URL журнала и настройками;
+- сохранённые аккаунты, «запомнить меня», «не выходить», импорт аккаунтов между профилями;
+- опциональная капча и поддержка самоподписанных сертификатов;
+- настраиваемые тексты типов оценок в ЭЖ (суффиксы после `|`);
+- проверка обновлений через последний релиз GitHub.
+
+## Структура
 
 ```
-src/core/       scoring rules + description classifier   (pure TS, unit-tested, used by the UI)
-src/main/       Electron main process: journal provider, local storage, config, IPC
-  providers/    types.ts (interface) · journal.ts (YOUR CODE) · mock.ts (demo data)
-src/preload/    exposes window.api to the UI (contextIsolation on, no node in the renderer)
-src/renderer/   React UI
+src/core/       модели, правила расчёта и классификатор (чистый TS, покрыт тестами)
+src/main/       главный процесс Electron: провайдер журнала, хранилище, конфиг, IPC
+  providers/    journal.ts (реальный журнал) · mock.ts (демо) · journal-format.ts (парсинг) · captcha_solver.ts
+src/preload/    публичный window.api для рендерера (contextIsolation, без Node в UI)
+src/renderer/   React-интерфейс: LoginView, MainView, ResultsTable, DetailPanel,
+                TopicsView, GradebookView, PeriodMarkDialog
+src/shared/     контракт API между процессами
+scripts/        dev-build-arch.sh, dev-run.sh, smoke.cjs
 ```
 
-## Run
+## Запуск и проверки
+
 ```bash
 npm install
-npm run dev          # hot-reload dev mode. Demo login: teacher / teacher (mock journal)
-npm test             # unit tests (scoring, classifier, formatting)
+npm run dev          # hot-reload; демо-вход: teacher / teacher
 npm run typecheck
+npm test             # Vitest: расчёты, классификатор, формат журнала
+npm run build        # сборка в out/
 ```
-On Linux, if `npm install` skipped the Electron binary, run `node node_modules/electron/install.js`.
 
-## Connect the real journal — the only part you must write
-Open `src/main/providers/journal.ts` and implement `login`, `getClasses`, `getPeriods`, `getStudents`,
-`getLessons`, `getEntries` (the interface and what each must return is in `src/main/providers/types.ts`).
-It runs in Node (main process), so `fetch`, cookies, `fs` etc. are available. Throw `AuthError("text")`
-for a wrong password - the text is shown on the login screen. Then set `"provider": "journal"` in `config.json`
-(settings you need, e.g. the base URL, go in `"providerOptions"` and arrive in the constructor).
+Если Linux-сборка Electron не скачалась при `npm install`: `node node_modules/electron/install.js`.
 
-Data model: a **Lesson** is a journal date + description. An **Entry** is what one student has on one lesson
-(a mark and/or an "Н"; `excused: true` for green ones). `getLessons` must return ALL physics lessons in the period,
-also those without marks - the count is the denominator of the absence percentage. Dates are `'YYYY-MM-DD'` strings.
-
-Alternative: `"provider": "C:\\path\\my-provider.js"` loads a plain CommonJS file exporting a class.
-
-## How task types are detected (`src/core/classifier.ts`)
-Regexes (case-insensitive, unicode) are matched against the lesson description, first match wins:
-
-| type | matches e.g. |
-|---|---|
-| Итоговая контрольная (10-11, 25 pts) | "Итоговая контрольная семестровая работа" |
-| Устный экзамен (10-11, 15 pts) | "Устный экзамен" |
-| Лабораторная | "Лабораторная работа №3", "ЛР 2", "л/р" |
-| Домашнее задание | "Домашнее задание", "ДЗ", "д/з" |
-| Текущая работа | "Самостоятельная", "Контрольная", "КР", "СР", "Коллоквиум", "Зачёт" |
-
-Override per type in `config.json`: `"classifierRules": { "homework": ["домашн", "на дом"] }` (replaces that type's defaults).
-JS `\b` does not work with Cyrillic - use `(?<![\p{L}\p{N}])слово(?![\p{L}\p{N}])` instead.
-Unrecognised lessons are highlighted orange in the "Записи журнала" tab, where the teacher can choose the type by hand
-(saved locally per class and lesson).
-
-## Rules implemented (`src/core/scoring.ts`)
-* Current works: average of all marks x 3, rounded half-up (max 30).
-* Homework: mean % -> >=90: 15, 80-89: 13, 70-79: 10, 60-69: 7, 51-59: 5, <=50: 0.
-* Labs (10-11): if done >= 4/5 of the labs: average x 3/2 rounded (max 15), otherwise 0.
-* Exams (10-11): points are read directly from the journal (written 25 + oral 15).
-* Absences without a good reason (% of all lessons): >20% and <=30%: -5; >30%: -10. Green "Н" is ignored.
-* Bonus points: entered by the teacher in the app (checklist from the spec + free-form rows).
-* 8-9: 42+ -> 5, 33-41 -> 4, 24-32 -> 3, <=23 -> 2.
-* 10-11: attested if total >= 53 AND current >= 32 AND final >= 21; if total >= 53 but one part is too low the status is
-  "Пересдача: ..." and no mark is shown. Marks: 90+ -> 5, 75-89 -> 4, 53-74 -> 3, below -> 2.
-
-### Assumptions to confirm with the department (all easy to change)
-1. **Homework %**: how the journal stores it. `homeworkMode` in `config.json`: `percent` (mark = %), `ten_point`
-   (10 -> 100%), `binary` (any mark = done). Missing homework on a date where others have marks counts as 0%; a lesson typed
-   as homework/lab/work that nobody has a mark for yet is treated as "not checked yet" and skipped.
-2. **"4/5 labs"** = done >= 80% of the labs held (`labsMinFraction`).
-3. "Текущая успеваемость" (>=32) = works + homework + labs + absence penalty; "итоговая аттестация" (>=21) = exams.
-   Bonus points count only toward the total.
-4. Final-stage olympiad bonus (15/10/8) is the same for 8-9 and 10-11, as written in the spec.
-5. Homework % gaps between brackets (e.g. 50.5%) -> 5 points.
-
-## Config & data locations
-`config.json` is read from: `$BRS_CONFIG`, then `<userData>/config.json` (survives updates), then the copy shipped with
-the app (`resources/config.json`). `<userData>` = `%APPDATA%\БРС по физике` on Windows, `~/.config/БРС по физике` on Linux.
-Bonus points and type overrides are stored in `brs-data.json` in the same folder (kept on uninstall and update).
-Never put journal passwords in `config.json` - it ships inside the installer.
-
-## Build installers
+Для Arch Linux есть готовые скрипты:
 ```bash
-npm run dist:win      # NSIS installer (.exe)  -> release/
-npm run dist:linux    # AppImage + .deb        -> release/
+npm run dev:build               # сборка + pacman-пакет + sudo pacman -U
+npm run dev:build:no-install    # только собрать пакет в release/
+npm run dev:run                 # собрать и запустить без установки
 ```
-Build Windows installers on Windows (or in CI), Linux ones on Linux; build on an older distro (e.g. Ubuntu 22.04) for the
-widest compatibility. Windows installs per user (no admin rights). Unsigned `.exe` files may show a SmartScreen prompt
-("more info -> run anyway") unless you buy a code-signing certificate.
-On Ubuntu 24.04+ an AppImage may need `--no-sandbox` because of AppArmor's user-namespace restriction; the `.deb` avoids this.
-A GitHub Actions matrix (`windows-latest`, `ubuntu-22.04`) running `npm ci && npm run dist:<os>` automates both.
+
+## Подключение журнала
+
+Провайдер реального журнала уже реализован в `src/main/providers/journal.ts`.
+В `config.json` выбирается источник данных:
+
+```json
+{
+  "provider": "journal",
+  "providerOptions": {},
+  "labsMinFraction": 0.8,
+  "classifierRules": {}
+}
+```
+
+- `"journal"` — рабочий провайдер; URL журнала, сертификаты, капчу и тексты типов задают в настройках профиля в UI (они перезаписывают `providerOptions`);
+- `"mock"` — демо-данные, меняются в памяти и подходят для разработки;
+- путь к CommonJS-файлу со классом-провайдером — подключение собственной реализации.
+
+Провайдер использует POST-запросы журнала (`t`, `l`, `p`, `f`, `z`):
+`login`, `gradesGet` (оценки и колонки), `topicsGet` (даты/темы), `sprResp` (уважительные пропуски),
+`topicEdit` (создание/изменение/удаление записи), `gradeAdd` (в том числе итоговая колонка периода).
+Ответы записи могут быть пустыми или текстовыми (`success`) — они считаются успешными.
+Контракт провайдера описан в `src/main/providers/types.ts`.
+
+**Модель данных.** `Lesson` — колонка журнала (дата `YYYY-MM-DD` + описание), `Entry` — оценка/«Н»
+одного ученика на одной колонке, `JournalTopic` — запись topicsGet с полями темы, ДЗ, веса и часов.
+`getPeriods`/`loadJournal` должны возвращать все занятия периода, включая те, где ещё нет оценок:
+их количество знаменатель процента пропусков.
+
+## Определение типа занятия (`src/core/classifier.ts`)
+
+Регистронезависимые регулярки применяются к описанию колонки, первое совпадение побеждает:
+порядок — итоговая контрольная → устный экзамен → лабораторная → домашнее задание → текущая работа.
+Переопределить шаблоны можно через `classifierRules` в `config.json` или в профиле UI.
+`\b` не работает с кириллицей — используйте `(?<![\p{L}\p{N}])слово(?![\p{L}\p{N}])`.
+Неопознанные занятия с оценками подсвечиваются в сводке; тип можно выбрать вручную (сохраняется локально).
+
+## Правила расчёта (`src/core/scoring.ts`)
+
+- Текущие работы: среднее оценок × 3, округление по правилу «половина вверх» (максимум 30).
+- Домашние задания: оценка в журнале — это процент выполнения; средний процент → 15 / 13 / 10 / 7 / 5 / 0 баллов
+  (≥90 / 80–89 / 70–79 / 60–69 / 51–59 / ≤50).
+- Лабораторные (10–11): при выполненных ≥ `labsMinFraction` (по умолчанию 4/5) — среднее × 1.5 (максимум 15), иначе 0.
+- Экзамены (10–11): баллы берутся из журнала напрямую (письменный до 25 + устный до 15, берётся последняя оценка).
+- Пропуски без уважительной причины: >20–30 % всех занятий −5 баллов, >30 % −10; зелёные «Н» не учитываются.
+- Бонусные баллы задаёт учитель в панели ученика (каталог из положений + произвольные строки).
+- 8–9 классы: ≥42 → 5, 33–41 → 4, 24–32 → 3, ≤23 → 2.
+- 10–11 классы: аттестация при total ≥ 53, текущая ≥ 32 и итоговая ≥ 21; при total ≥ 53, но одной из частей меньше нормы — статус «Пересдача» и без оценки.
+  Оценка: ≥90 → 5, 75–89 → 4, 53–74 → 3, иначе 2.
+
+**Уточнения:** отсутствующее ДЗ на дату, где у других есть оценки, считается 0 %; колонка типа,
+у которой нет оценок ни у кого, считается «не проверенной» и пропускается. «4/5 лабораторных»
+регулируется параметром `labsMinFraction`. Баллы за олимпиады заключительного этапа одинаковы для 8–9 и 10–11.
+
+## Конфигурация и данные
+
+`config.json` ищется в порядке: `$BRS_CONFIG`, затем `<userData>/config.json` (переживает обновления),
+затем копия, поставляемая с приложением. `<userData>` — `%APPDATA%\БРС по физике` (Windows)
+или `~/.config/БРС по физике` (Linux). Профили, аккаунты, типы занятий и бонусы хранятся в
+`brs-data.json` в той же папке и сохраняются при обновлении/удалении приложения.
+Пароли журнала не стоит держать в `config.json` — он входит в установщик.
+
+## Сборка установщиков
+
+```bash
+npm run dist:win      # NSIS-установщик → release/
+npm run dist:linux    # AppImage + .deb + .pacman → release/
+```
+
+Windows-сборки делаются на Windows (или в CI), Linux — на Linux; для совместимости используйте
+старый дистрибутив (например, Ubuntu 22.04). Установка на Windows — per-user, без прав администратора.
+Неподписанный `.exe` может вызвать предупреждение SmartScreen. На Ubuntu 24.04+ AppImage может
+потребовать `--no-sandbox` из-за AppArmor; `.deb` этой проблемы лишён.
+GitHub Actions (`windows-latest`, `ubuntu-22.04`) собирает обе платформы через `npm ci && npm run dist:<os>`.

@@ -1,4 +1,4 @@
-import type { Period, TaskType } from '@core/models'
+import { JOURNAL_TYPE_LABELS, type JournalTopic, type Period, type TaskType } from '@core/models'
 
 export interface ScolePeriodDefinition {
   shortName: string
@@ -171,6 +171,61 @@ export function currentAcademicStartYear(now = new Date()): number {
   return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
 }
 
+/** Inverse of journalDate: '2026-09-16' -> 'd016'. Rejects dates outside the academic year. */
+export function dateToJournalKey(iso: string, academicStartYear: number): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
+  const monthIndex = (month - 9 + 12) % 12
+  const expectedYear = academicStartYear + (monthIndex >= 4 ? 1 : 0)
+  if (year !== expectedYear) return null
+  return `d${monthIndex}${String(day).padStart(2, '0')}`
+}
+
+/** Weight codes from topicsGet: 0..8 are 0..4 in 0.5 steps, 9 is a special "П". */
+export function formatJournalWeight(weight: number): string {
+  return weight === 9 ? 'П' : String(weight / 2)
+}
+
+/**
+ * Parse a journal response. Write requests answer with 'success', an empty body or a plain string,
+ * so allowNone treats any non-error payload as success instead of demanding JSON.
+ */
+export function parseJournalResponse(raw: string, functionName: string, allowNone = false): Record<string, unknown> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed) } catch { /* plain text response */ }
+    }
+  } catch {
+    parsed = raw.trim()
+  }
+
+  if (allowNone) {
+    const isObject = !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    const message = isObject
+      ? String((parsed as Record<string, unknown>).error ?? (parsed as Record<string, unknown>).message ?? '')
+      : String(parsed)
+    if (message && /ошибк|error|denied|forbidden|invalid|fail|неверн/i.test(message)) {
+      throw new Error(`${functionName}: ${message.slice(0, 300)}`)
+    }
+    // Valid JSON must still reach the caller: allowNone only tolerates empty/plain responses.
+    return isObject ? parsed as Record<string, unknown> : {}
+  }
+
+  if (parsed === 'none') throw new Error(`Журнал не вернул данные для ${functionName}`)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Журнал вернул некорректный ответ для ${functionName}`)
+  }
+  return parsed as Record<string, unknown>
+}
+
 function periodDate(value: string, academicYear: number): string | null {
   const match = /^(\d{2})\.(\d{2})$/.exec(value)
   if (!match) return null
@@ -219,28 +274,88 @@ export function periodsFromColumns(
   }).sort((a, b) => a.end.localeCompare(b.end))
 }
 
-export function parseGradeCell(raw: unknown): { value: number | null; absenceCount: number } {
+/** Column holding the mark for the whole academic year (e.g. d925g). Uses the real key when present. */
+export function yearColumnFromColumns(
+  keys: string[],
+  academicYear: number,
+  definitions: ScolePeriodDefinition[] = FALLBACK_PERIODS
+): string {
+  const index = definitions.findIndex((d) => d.shortName === 'Год')
+  const fallbackIndex = FALLBACK_PERIODS.findIndex((d) => d.shortName === 'Год')
+  const position = index >= 0 ? index : fallbackIndex
+  if (position < 0) return ''
+  const definition = index >= 0 ? definitions[index] : FALLBACK_PERIODS[fallbackIndex]
+  const letter = String.fromCharCode(97 + position)
+  const existing = keys.find((key) => new RegExp(`^d[0-9]{3}${letter}$`).test(key))
+  if (existing) return existing
+  const dayMonth = /^(\d{2})\.(\d{2})$/.exec(definition.end)
+  if (!dayMonth || !periodDate(definition.end, academicYear)) return ''
+  const month = Number(dayMonth[2])
+  const monthIndex = month > 8 ? month - 9 : month + 3
+  return `d${monthIndex}${dayMonth[1]}${letter}`
+}
+
+export function parseGradeCell(raw: unknown): { value: number | null; absenceCount: number; raw: string } {
   const text = typeof raw === 'string' || typeof raw === 'number' ? String(raw) : ''
   const absenceCount = (text.match(/н/gi) ?? []).length
   const mark = text.replace(/н/gi, '').match(/\d+(?:[.,]\d+)?/)
   const value = mark ? Number(mark[0].replace(',', '.')) : null
-  return { value: Number.isFinite(value) && value !== 999 ? value : null, absenceCount }
+  return { value: Number.isFinite(value) && value !== 999 ? value : null, absenceCount, raw: text }
 }
 
 export function typeFromTopic(
   topic: string,
   labels: Partial<Record<Exclude<TaskType, 'ignored'>, string>>
 ): TaskType | undefined {
-  const defaults: Record<Exclude<TaskType, 'ignored'>, string> = {
-    current_work: 'Текущая работа',
-    lab: 'Лабораторная работа',
-    homework: 'Процент выполнения ДЗ',
-    exam_oral: 'Экзамен устный',
-    exam_written: 'Экзамен письменный'
-  }
   const suffix = topic.split('|').at(-1)?.trim().toLocaleLowerCase('ru')
   if (!suffix) return undefined
-  return (Object.keys(defaults) as (keyof typeof defaults)[]).find((type) =>
-    suffix === (labels[type] || defaults[type]).trim().toLocaleLowerCase('ru')
+  return (Object.keys(JOURNAL_TYPE_LABELS) as (keyof typeof JOURNAL_TYPE_LABELS)[]).find((type) =>
+    suffix === (labels[type] || JOURNAL_TYPE_LABELS[type]).trim().toLocaleLowerCase('ru')
   )
+}
+
+/** Split a topic into the visible theme and the type encoded in its suffix. */
+export function splitTopicText(
+  raw: string,
+  labels: Partial<Record<Exclude<TaskType, 'ignored'>, string>>
+): { theme: string; taskType: TaskType | null } {
+  const parts = raw.split('|')
+  if (parts.length < 2) return { theme: raw.trim(), taskType: null }
+  return {
+    theme: parts.slice(0, -1).join('|').trim(),
+    taskType: typeFromTopic(raw, labels) ?? null
+  }
+}
+
+/** Build the `theme | type` value. "Не учитывать" is sent without a suffix. */
+export function buildTopicText(
+  theme: string,
+  taskType: TaskType | null,
+  labels: Partial<Record<Exclude<TaskType, 'ignored'>, string>>
+): string {
+  const clean = theme.trim()
+  if (!taskType || taskType === 'ignored') return clean
+  return `${clean} | ${labels[taskType] || JOURNAL_TYPE_LABELS[taskType]}`
+}
+
+/** Convert one topicsGet column into the model used by both new pages. */
+export function parseTopicRecord(
+  id: string,
+  date: string,
+  raw: Record<string, unknown>,
+  labels: Partial<Record<Exclude<TaskType, 'ignored'>, string>>
+): JournalTopic {
+  const text = typeof raw.t === 'string' ? raw.t : ''
+  const { theme, taskType } = splitTopicText(text, labels)
+  const weight = Number(raw.w)
+  const hours = Number(raw.v)
+  return {
+    id,
+    date,
+    theme,
+    taskType,
+    homework: raw.h == null ? '' : String(raw.h),
+    weight: Number.isInteger(weight) && weight >= 0 && weight <= 9 ? weight : 0,
+    hours: Number.isFinite(hours) && hours > 0 ? hours : 1
+  }
 }

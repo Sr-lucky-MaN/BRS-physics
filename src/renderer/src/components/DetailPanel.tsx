@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react'
-import { TYPE_LABELS, type BonusRow, type Entry, type Lesson, type Student, type TaskType } from '@core/models'
+import { useEffect, useRef, useState } from 'react'
+import { TYPE_LABELS, type BonusRow, type Entry, type JournalTopic, type Lesson, type Student, type TaskType } from '@core/models'
 import { BONUS_CATALOG, bonusPoints, type StudentResult } from '@core/scoring'
 import { fmt } from '../format'
 
-const OVERRIDE_OPTIONS: TaskType[] = ['current_work', 'homework', 'lab', 'exam_written', 'exam_oral', 'ignored']
+type GroupKey = TaskType | 'unknown'
+const GROUP_ORDER: GroupKey[] = ['current_work', 'homework', 'lab', 'exam_written', 'exam_oral', 'ignored', 'unknown']
 
 interface Props {
   student: Student | null
   result: StudentResult | null
   grade: number
   lessons: Lesson[]
+  topics: JournalTopic[]
   entries: Entry[]
   autoTypes: Record<string, TaskType | null>
   types: Record<string, TaskType | null>
-  overrides: Record<string, TaskType>
   bonusRows: BonusRow[]
-  onOverride: (lessonId: string, type: TaskType | null) => void
+  onSetGrade: (day: string, studentId: string, value: string) => Promise<void>
   onSaveBonus: (studentId: string, rows: BonusRow[]) => void
 }
 
@@ -33,7 +34,11 @@ export default function DetailPanel(p: Props) {
         ))}
       </div>
       <div className="tab-body">
-        {tab === 'lessons' ? <LessonsTab {...p} /> : !p.student || !p.result ? (
+        {tab === 'lessons' ? p.student ? (
+          <LessonsTab key={p.student.id} {...p} student={p.student} />
+        ) : (
+          <p className="muted">Выберите ученика в таблице</p>
+        ) : !p.student || !p.result ? (
           <p className="muted">Выберите ученика в таблице</p>
         ) : tab === 'summary' ? (
           <Summary student={p.student} r={p.result} />
@@ -77,36 +82,157 @@ function Summary({ student, r }: { student: Student; r: StudentResult }) {
   )
 }
 
-function LessonsTab({ student, lessons, entries, autoTypes, types, overrides, onOverride }: Props) {
-  const mine = new Map(entries.filter((e) => e.studentId === student?.id).map((e) => [e.lessonId, e]))
-  const sorted = [...lessons].sort((a, b) => a.date.localeCompare(b.date))
+function LessonsTab({ student, lessons, topics, entries, types, onSetGrade }: Props & { student: Student }) {
+  const mine = new Map(entries.filter((e) => e.studentId === student.id).map((e) => [e.lessonId, e]))
+  const themes = new Map(topics.map((t) => [t.id, t.theme]))
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [value, setValue] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const cancelledRef = useRef(false)
+  const originalValueRef = useRef('')
+
+  const groups = new Map<GroupKey, Lesson[]>()
+  for (const l of [...lessons].sort((a, b) => a.date.localeCompare(b.date))) {
+    const key = types[l.id] ?? 'unknown'
+    const list = groups.get(key) ?? []
+    list.push(l)
+    groups.set(key, list)
+  }
+  const orderedGroups = GROUP_ORDER.filter((key) => groups.has(key)).map((key) => [key, groups.get(key)!] as const)
+
   const fmtDate = (iso: string) => iso.split('-').reverse().join('.')
+  const groupLabel = (key: GroupKey) => key === 'unknown' ? 'Не распознано' : TYPE_LABELS[key]
+
+  function startEdit(lesson: Lesson) {
+    if (savingRef.current) return
+    const original = mine.get(lesson.id)?.raw ?? ''
+    originalValueRef.current = original
+    setEditingId(lesson.id)
+    setValue(original)
+    setError('')
+    cancelledRef.current = false
+  }
+
+  function cancelEdit() {
+    cancelledRef.current = true
+    setEditingId(null)
+  }
+
+  async function saveEdit() {
+    if (!editingId || savingRef.current) return
+    if (value === originalValueRef.current) {
+      setEditingId(null) // nothing changed — no request, no reload, selection stays put
+      return
+    }
+    savingRef.current = true
+    cancelledRef.current = true // explicit save: don't save again when the input loses focus
+    setSaving(true)
+    setError('')
+    try {
+      await onSetGrade(editingId, student.id, value)
+      setEditingId(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      cancelledRef.current = false
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
   return (
-    <table className="lessons">
-      <thead>
-        <tr><th>Дата</th><th>Описание</th><th>Тип (можно исправить)</th><th>Запись</th></tr>
-      </thead>
-      <tbody>
-        {sorted.map((l) => {
-          const e = mine.get(l.id)
-          const cell = e ? [e.absent ? `Н${(e.absenceCount ?? 1) > 1 ? ` × ${e.absenceCount}` : ''}${e.excused ? ' (уваж.)' : ''}` : null, e.value != null ? String(e.value) : null].filter(Boolean).join('; ') : ''
-          const auto = autoTypes[l.id]
-          return (
-            <tr key={l.id} className={types[l.id] == null ? 'unknown' : ''}>
-              <td>{fmtDate(l.date)}</td>
-              <td>{l.description}</td>
-              <td>
-                <select value={overrides[l.id] ?? ''} onChange={(ev) => onOverride(l.id, (ev.target.value || null) as TaskType | null)}>
-                  <option value="">Авто: {auto ? TYPE_LABELS[auto] : 'не распознано'}</option>
-                  {OVERRIDE_OPTIONS.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-                </select>
-              </td>
-              <td className={`center${e?.absent && e.excused ? ' excused' : ''}`}>{cell}</td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <div className="lessons-view">
+      {error && <div className="banner error" onClick={() => setError('')}>{error}</div>}
+      <p className="muted lessons-hint">Клик по оценке — изменение, Enter — сохранить, Esc — отменить.</p>
+      <table className="lessons">
+        <thead>
+          <tr><th>Дата</th><th>Тема</th><th>Тип</th><th>Оценка</th></tr>
+        </thead>
+        <tbody>
+          {orderedGroups.map(([key, items]) => (
+            <GroupRows
+              key={key}
+              label={groupLabel(key)}
+              count={items.length}
+              unknown={key === 'unknown'}
+              lessons={items}
+              themes={themes}
+              entries={mine}
+              editingId={editingId}
+              value={value}
+              saving={saving}
+              fmtDate={fmtDate}
+              onStart={startEdit}
+              onCancel={cancelEdit}
+              onChange={setValue}
+              onSave={() => void saveEdit()}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function GroupRows({ label, count, unknown, lessons, themes, entries, editingId, value, saving, fmtDate, onStart, onCancel, onChange, onSave }: {
+  label: string
+  count: number
+  unknown: boolean
+  lessons: Lesson[]
+  themes: Map<string, string>
+  entries: Map<string, Entry>
+  editingId: string | null
+  value: string
+  saving: boolean
+  fmtDate: (iso: string) => string
+  onStart: (lesson: Lesson) => void
+  onCancel: () => void
+  onChange: (value: string) => void
+  onSave: () => void
+}) {
+  return (
+    <>
+      <tr className={`group-row${unknown ? ' unknown' : ''}`}><td colSpan={4}>{label} <span className="muted">· {count}</span></td></tr>
+      {lessons.map((l) => {
+        const e = entries.get(l.id)
+        const isEditing = editingId === l.id
+        const classes = ['grade-cell', e?.absent && e.excused ? 'excused' : ''].filter(Boolean).join(' ')
+        return (
+          <tr key={l.id} className={unknown ? 'unknown' : ''}>
+            <td className="date">{fmtDate(l.date)}</td>
+            <td>{themes.get(l.id) || l.description.split(' | ')[0] || <span className="muted">—</span>}</td>
+            <td className="type">{label}</td>
+            <td
+              className={classes}
+              tabIndex={isEditing ? -1 : 0}
+              onClick={() => { if (!isEditing) onStart(l) }}
+              onKeyDown={(ev) => {
+                if (isEditing) return
+                if (ev.key === 'Enter' || ev.key === 'F2') { ev.preventDefault(); onStart(l) }
+              }}
+            >
+              {isEditing ? (
+                <input
+                  autoFocus
+                  className="lesson-grade-input"
+                  value={value}
+                  disabled={saving}
+                  onClick={(ev) => ev.stopPropagation()}
+                  onChange={(ev) => onChange(ev.target.value)}
+                  onBlur={() => onSave()}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter') { ev.preventDefault(); onSave() }
+                    if (ev.key === 'Escape') { ev.preventDefault(); onCancel() }
+                  }}
+                />
+              ) : (e?.raw || <span className="muted">—</span>)}
+            </td>
+          </tr>
+        )
+      })}
+    </>
   )
 }
 
