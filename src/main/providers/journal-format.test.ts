@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildTopicText, dateToJournalKey, formatJournalWeight, journalDate, parseGradeCell, parseJournalResponse,
-  parseScoleConfig, parseTopicRecord, periodsFromColumns, splitTopicText, typeFromTopic
+  buildTopicText, dateToJournalKey, formatJournalWeight, journalDate, journalEndpoint, parseGradeCell,
+  parseJournalResponse, parseScoleConfig, parseTopicRecord, periodsFromColumns, splitTopicText, typeFromTopic
 } from './journal-format'
+
+describe('journal endpoint URLs', () => {
+  it('keeps the path prefix from baseUrl', () => {
+    expect(journalEndpoint('https://suncles.online/scole', '/')).toBe('https://suncles.online/scole/')
+    expect(journalEndpoint('https://suncles.online/scole', '/cpt.a')).toBe('https://suncles.online/scole/cpt.a')
+    expect(journalEndpoint('https://suncles.online/scole', '/js/ini.js')).toBe('https://suncles.online/scole/js/ini.js')
+    expect(journalEndpoint('https://suncles.online/scole/', 'cpt.a')).toBe('https://suncles.online/scole/cpt.a')
+  })
+
+  it('uses the root when baseUrl has no path', () => {
+    expect(journalEndpoint('https://suncles.online', '/')).toBe('https://suncles.online/')
+    expect(journalEndpoint('https://suncles.online/', '/js/ini.js')).toBe('https://suncles.online/js/ini.js')
+  })
+})
 
 describe('journal date and periods', () => {
   it('decodes the school-year month index including year rollover', () => {

@@ -12,6 +12,14 @@ export interface ScoleConfig {
   defaultSubjects: Record<string, string>
 }
 
+/** Build a journal endpoint URL, keeping the path prefix from baseUrl (e.g. https://host/scole). */
+export function journalEndpoint(baseUrl: string, path: string): string {
+  const base = new URL(String(baseUrl).trim())
+  const prefix = base.pathname.replace(/\/+$/, '')
+  const suffix = path.replace(/^\/+/, '')
+  return new URL(`${prefix}/${suffix}`, base.origin).href
+}
+
 const FALLBACK_PERIODS: ScolePeriodDefinition[] = [
   { shortName: '1ч', name: 'Первая четверть', start: '01.09', end: '05.11' },
   { shortName: '2ч', name: 'Вторая четверть', start: '06.11', end: '31.12' },

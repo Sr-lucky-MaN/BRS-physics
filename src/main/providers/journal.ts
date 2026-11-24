@@ -7,7 +7,7 @@ import type { ClassInfo, Entry, JournalTopic, Lesson, Period, Student, SubjectIn
 import { Agent, fetch as undiciFetch } from 'undici'
 import { AuthError, type JournalProvider } from './types'
 import solveCaptcha from './captcha_solver';
-import { buildTopicText, currentAcademicStartYear, journalDate, parseGradeCell, parseJournalResponse, parseScoleConfig, parseTopicRecord, periodsFromColumns, typeFromTopic, yearColumnFromColumns, type ScoleConfig } from './journal-format'
+import { buildTopicText, currentAcademicStartYear, journalDate, journalEndpoint, parseGradeCell, parseJournalResponse, parseScoleConfig, parseTopicRecord, periodsFromColumns, typeFromTopic, yearColumnFromColumns, type ScoleConfig } from './journal-format'
 
 const DEFAULT_SUBJECTS: Record<string, string> = {
   s110: 'Русский язык', s120: 'Литература', s210: 'Английский язык', s220: 'Немецкий язык',
@@ -41,11 +41,20 @@ export class JournalApiProvider implements JournalProvider {
     }
   }
 
+  /** Resolve an endpoint against the configured base URL, preserving its path prefix. */
+  private endpoint(path: string): URL {
+    const baseUrl = String(this.options.baseUrl ?? '').trim()
+    if (!baseUrl) throw new AuthError('Укажите URL журнала в настройках профиля')
+    try {
+      return new URL(journalEndpoint(baseUrl, path))
+    } catch {
+      throw new AuthError(`Некорректный URL журнала: ${baseUrl}`)
+    }
+  }
+
   private async apiRequest(functionName: string, args?: string[], allowNone = false): Promise<Record<string, unknown>> {
     if (!this.token || !this.username) throw new AuthError('Сессия журнала завершена. Войдите снова.')
-    const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
-    if (!baseUrl) throw new AuthError('Укажите URL журнала в настройках профиля')
-    const response = await this.fetchJournal(new URL('/', baseUrl), {
+    const response = await this.fetchJournal(this.endpoint('/'), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain; charset=UTF-8', ...(this.cookies ? { Cookie: this.cookies } : {}) },
       body: JSON.stringify({
@@ -83,9 +92,8 @@ export class JournalApiProvider implements JournalProvider {
     if (!this.scoleConfigPromise) {
       this.scoleConfigPromise = (async () => {
         try {
-          const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
-          if (!baseUrl) return null
-          const response = await this.fetchJournal(new URL('/js/ini.js', baseUrl), { method: 'GET' }, 'Scole configuration request')
+          if (!this.options.baseUrl) return null
+          const response = await this.fetchJournal(this.endpoint('/js/ini.js'), { method: 'GET' }, 'Scole configuration request')
           if (!response.ok) return null
           const source = await response.text()
           if (source.length > 1_000_000) return null
@@ -103,9 +111,7 @@ export class JournalApiProvider implements JournalProvider {
 
   /** Replace this with the captcha calculation and return its ID and answer. */
   private async getCaptchaValues(): Promise<{ ci: string; c: string }> {
-    const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
-    const captchaUrl = new URL('/cpt.a', baseUrl)
-    const response = await this.fetchJournal(captchaUrl, { method: 'GET' }, 'Captcha request')
+    const response = await this.fetchJournal(this.endpoint('/cpt.a'), { method: 'GET' }, 'Captcha request')
     if (!response.ok) throw new AuthError(`Ошибка получения капчи: HTTP ${response.status}`);
     const raw = await response.arrayBuffer().catch(() => null)
     if (!raw) throw new AuthError('Ошибка получения капчи: пустой ответ')
@@ -118,9 +124,6 @@ export class JournalApiProvider implements JournalProvider {
   }
 
   async login(username: string, password: string) {
-    const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
-    if (!baseUrl) throw new AuthError('Укажите URL журнала в настройках профиля')
-    
     // bypassCaptcha = true means skip captcha (checkbox "Use captcha" is unchecked)
     // bypassCaptcha = false means use captcha (checkbox "Use captcha" is checked)
     const useCaptcha = this.options.bypassCaptcha !== true
@@ -141,8 +144,7 @@ export class JournalApiProvider implements JournalProvider {
       ...(ci ? { ci } : {}),
       ...(c ? { c } : {})
     })
-    const loginUrl = new URL('/', baseUrl)
-    const response = await this.fetchJournal(loginUrl, {
+    const response = await this.fetchJournal(this.endpoint('/'), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain; charset=UTF-8', ...(this.cookies ? { Cookie: this.cookies } : {}) },
       body
@@ -178,13 +180,11 @@ export class JournalApiProvider implements JournalProvider {
   }
 
   async logout() {
-    const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
     this.cookies = ''
     this.teachLoad = {}
     this.username = ''
     this.token = ''
     this.customSubjectNames = null
-    void baseUrl
   }
 
   async getClasses(): Promise<ClassInfo[]> {
@@ -208,9 +208,7 @@ export class JournalApiProvider implements JournalProvider {
     const customIds = subjectIds.filter((id) => !(id in defaultSubjects))
     if (customIds.length && this.customSubjectNames === null) {
       if (!this.token) throw new AuthError('Не удалось получить токен для загрузки списка предметов')
-      const baseUrl = String(this.options.baseUrl ?? '').replace(/\/$/, '')
-      if (!baseUrl) throw new AuthError('Укажите URL журнала в настройках профиля')
-      const response = await this.fetchJournal(new URL('/', baseUrl), {
+      const response = await this.fetchJournal(this.endpoint('/'), {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain; charset=UTF-8',
